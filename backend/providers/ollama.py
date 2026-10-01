@@ -44,6 +44,11 @@ class OllamaProvider:
 
         if tools:
             payload["tools"] = tools
+            # Qwen3.5 has a "thinking" mode that wraps reasoning in <think> tags.
+            # This conflicts with tool calling — the model can produce empty output
+            # (no text AND no tool calls), which Ollama rejects.
+            # Setting think=False disables this so tool calls work reliably.
+            payload["think"] = False
 
         response = requests.post(
             f"{self.base_url}/api/chat",
