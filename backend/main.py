@@ -1,12 +1,18 @@
+import os
 from fastapi import FastAPI
 from providers.ollama import OllamaProvider
 from providers.nebius import NebiusProvider
 from agent.agent import Agent
+from agent.tools import ToolRegistry
 
 app = FastAPI()
 
 ollama = OllamaProvider()
 nebius = NebiusProvider()
+
+# ── Tool security: the agent can ONLY access files inside this directory ──
+PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
+tool_registry = ToolRegistry(allowed_dirs=[PROJECT_DIR])
 
 
 @app.get("/status")
@@ -44,12 +50,13 @@ def run_agent(task: str, provider: str = "local"):
     else:
         return {"error": "Unknown provider. Use 'local' or 'online'."}
 
-    agent = Agent(selected_provider)
+    agent = Agent(selected_provider, tool_registry=tool_registry)
 
     result = agent.run(task)
 
     return {
         "provider": provider,
         "status": agent.status,
-        "result": result
+        "result": result,
+        "logs": agent.logs
     }

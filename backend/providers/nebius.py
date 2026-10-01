@@ -14,4 +14,11 @@ class NebiusProvider:
         if not self.api_key:
             return "Nebius API key is not configured."
 
-        return "Nebius provider is ready."
+        return "Nebius provider is ready but not yet implemented."
+
+    def chat(self, messages, tools=None):
+        """Stub — same interface as OllamaProvider.chat() for agent compatibility."""
+        if not self.api_key:
+            return {"role": "assistant", "content": "Nebius API key is not configured."}
+
+        return {"role": "assistant", "content": "Nebius provider is ready but not yet implemented."}

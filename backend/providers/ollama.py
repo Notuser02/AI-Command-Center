@@ -5,11 +5,12 @@ class OllamaProvider:
 
     def __init__(self, model="qwen3.5:9b"):
         self.model = model
-        self.url = "http://localhost:11434/api/generate"
+        self.base_url = "http://localhost:11434"
 
     def generate(self, prompt):
+        """Simple prompt → text. Used by the /chat endpoint."""
         response = requests.post(
-            self.url,
+            f"{self.base_url}/api/generate",
             json={
                 "model": self.model,
                 "prompt": prompt,
@@ -20,11 +21,43 @@ class OllamaProvider:
         result = response.json()
 
         return result["response"]
-    
-    
-if __name__ == "__main__":
-    providers = OllamaProvider()
 
-    answer = providers.generate("Explain what an API is in one sentence.")
+    def chat(self, messages, tools=None):
+        """
+        Conversation-style call with optional tool definitions.
+        Used by the Agent for multi-step tool-calling loops.
+
+        Args:
+            messages: list of {"role": "...", "content": "..."}
+            tools:    list of tool definitions (OpenAI format), or None
+
+        Returns:
+            The assistant's message dict, e.g.:
+            {"role": "assistant", "content": "..."} or
+            {"role": "assistant", "content": "", "tool_calls": [...]}
+        """
+        payload = {
+            "model": self.model,
+            "messages": messages,
+            "stream": False
+        }
+
+        if tools:
+            payload["tools"] = tools
+
+        response = requests.post(
+            f"{self.base_url}/api/chat",
+            json=payload
+        )
+
+        result = response.json()
+
+        return result["message"]
+
+
+if __name__ == "__main__":
+    provider = OllamaProvider()
+
+    answer = provider.generate("Explain what an API is in one sentence.")
 
     print(answer)
