@@ -12,6 +12,7 @@ you explicitly permit.
 
 import os
 import json
+import subprocess
 
 
 # ── Safety limits ──────────────────────────────────────────────────
@@ -39,7 +40,11 @@ class ToolRegistry:
         self._tools = {
             "list_files": self._list_files,
             "read_file": self._read_file,
+            "run_command": self._run_command,
         }
+
+        # Sensitive tools that require human approval before execution
+        self._sensitive_tools = {"run_command"}
 
     # ── Path validation ────────────────────────────────────────────
 
@@ -101,6 +106,41 @@ class ToolRegistry:
                 return f.read()
         except UnicodeDecodeError:
             return "Error: file appears to be binary, cannot read as text."
+
+    def _run_command(self, command: str):
+        """
+        Execute a shell command inside the project directory with strict limits.
+        This is a sensitive tool and must be approved by the user before running.
+        """
+        if not command or not command.strip():
+            return "Error: command cannot be empty."
+
+        cwd = self.allowed_dirs[0]
+        try:
+            res = subprocess.run(
+                command,
+                shell=True,
+                cwd=cwd,
+                capture_output=True,
+                text=True,
+                timeout=20
+            )
+            output = res.stdout
+            if res.stderr:
+                output += ("\nSTDERR:\n" + res.stderr)
+            if not output.strip():
+                output = f"(Command exited with code {res.returncode} and produced no output)"
+            return output[:MAX_FILE_SIZE]
+        except subprocess.TimeoutExpired:
+            return "Error: command timed out after 20 seconds."
+        except Exception as e:
+            return f"Error executing command: {e}"
+
+    # ── Permission & Approval ──────────────────────────────────────
+
+    def requires_approval(self, tool_name: str) -> bool:
+        """Returns True if the specified tool requires explicit human approval."""
+        return tool_name in self._sensitive_tools
 
     # ── Execution ──────────────────────────────────────────────────
 
@@ -171,6 +211,26 @@ class ToolRegistry:
                             }
                         },
                         "required": ["file_path"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "run_command",
+                    "description": (
+                        "Execute a shell command inside the project directory. "
+                        "NOTE: This is a sensitive action that requires explicit human approval before running."
+                    ),
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "command": {
+                                "type": "string",
+                                "description": "The shell command to execute, e.g. 'git status' or 'python --version'.",
+                            }
+                        },
+                        "required": ["command"],
                     },
                 },
             },

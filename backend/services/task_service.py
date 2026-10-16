@@ -12,6 +12,9 @@ from agent.tools import ToolRegistry
 import os
 
 
+from services.approval_service import ApprovalService
+
+
 MAX_CONCURRENT_TASKS = 2
 
 
@@ -23,8 +26,14 @@ class RunningTask:
 
 
 class TaskService:
-    def __init__(self, tool_registry: ToolRegistry, max_concurrent: int = MAX_CONCURRENT_TASKS):
+    def __init__(
+        self,
+        tool_registry: ToolRegistry,
+        approval_service: Optional[ApprovalService] = None,
+        max_concurrent: int = MAX_CONCURRENT_TASKS
+    ):
         self.tool_registry = tool_registry
+        self.approval_service = approval_service
         self.semaphore = asyncio.Semaphore(max_concurrent)
         self.running_tasks: Dict[int, RunningTask] = {}
         self.repo = TaskRepository()
@@ -69,7 +78,12 @@ class TaskService:
         self.repo.update_status(task_id, TaskStatus.RUNNING)
 
         provider = self._get_provider(task.provider)
-        agent = Agent(provider, tool_registry=self.tool_registry)
+        agent = Agent(
+            provider,
+            tool_registry=self.tool_registry,
+            approval_service=self.approval_service,
+            task_id=task_id
+        )
 
         with self._lock:
             self.running_tasks[task_id] = RunningTask(

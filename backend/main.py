@@ -18,9 +18,10 @@ from fastapi import FastAPI
 from database import init_db
 from agent.tools import ToolRegistry
 from services.task_service import TaskService
+from services.approval_service import ApprovalService
 
 # ── Route modules ──
-from api import chat, agents, tasks
+from api import chat, agents, tasks, approvals
 
 app = FastAPI(title="AI Command Center")
 
@@ -29,16 +30,19 @@ PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
 tool_registry = ToolRegistry(allowed_dirs=[PROJECT_DIR])
 
 # ── Initialize services ──
-task_service = TaskService(tool_registry)
+approval_service = ApprovalService()
+task_service = TaskService(tool_registry, approval_service=approval_service)
 
 # ── Inject dependencies into route modules ──
 agents.init(tool_registry)
 tasks.init(task_service)
+approvals.init(approval_service)
 
 # ── Mount routers ──
 app.include_router(chat.router)
 app.include_router(agents.router)
 app.include_router(tasks.router)
+app.include_router(approvals.router)
 
 
 @app.on_event("startup")

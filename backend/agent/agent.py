@@ -32,9 +32,11 @@ class CancellationError(Exception):
 
 class Agent:
 
-    def __init__(self, provider, tool_registry=None):
+    def __init__(self, provider, tool_registry=None, approval_service=None, task_id=None):
         self.provider = provider
         self.tool_registry = tool_registry
+        self.approval_service = approval_service
+        self.task_id = task_id
         self.status = "idle"
         self.result = None
         self.logs = []      # step-by-step record of what the agent did
@@ -188,8 +190,73 @@ class Agent:
                     "arguments": arguments,
                 })
 
-                # Run the tool through the registry (path validation happens there)
-                tool_result = self.tool_registry.execute(tool_name, arguments)
+                # Check if tool requires explicit human approval
+                requires_app = (
+                    self.tool_registry
+                    and hasattr(self.tool_registry, "requires_approval")
+                    and self.tool_registry.requires_approval(tool_name)
+                )
+
+                if requires_app:
+                    if self.approval_service and self.task_id:
+                        self.logs.append({
+                            "step": round_num,
+                            "type": "approval_required",
+                            "tool": tool_name,
+                            "arguments": arguments,
+                            "message": f"Action '{tool_name}' requires human approval."
+                        })
+                        if progress_callback:
+                            progress_callback(self.logs)
+
+                        approval = self.approval_service.request_approval(
+                            task_id=self.task_id,
+                            tool_name=tool_name,
+                            arguments=arguments,
+                            reason=f"Agent requested to execute tool '{tool_name}'."
+                        )
+
+                        approved = self.approval_service.wait_for_decision(
+                            approval_id=approval.id,
+                            timeout=300.0,
+                            check_cancelled=lambda: self._cancel_event.is_set()
+                        )
+
+                        if approved:
+                            self.logs.append({
+                                "step": round_num,
+                                "type": "approval_resolved",
+                                "approval_id": approval.id,
+                                "status": "approved",
+                                "message": f"Action '{tool_name}' was APPROVED by user."
+                            })
+                            if progress_callback:
+                                progress_callback(self.logs)
+                            tool_result = self.tool_registry.execute(tool_name, arguments)
+                        else:
+                            self.logs.append({
+                                "step": round_num,
+                                "type": "approval_resolved",
+                                "approval_id": approval.id,
+                                "status": "denied",
+                                "message": f"Action '{tool_name}' was DENIED or timed out."
+                            })
+                            if progress_callback:
+                                progress_callback(self.logs)
+                            tool_result = f"Action '{tool_name}' was DENIED by the user."
+                    else:
+                        self.logs.append({
+                            "step": round_num,
+                            "type": "approval_denied",
+                            "tool": tool_name,
+                            "message": f"Action '{tool_name}' requires approval, but approval service is unavailable."
+                        })
+                        if progress_callback:
+                            progress_callback(self.logs)
+                        tool_result = f"Error: Tool '{tool_name}' requires human approval, but no approval system is active."
+                else:
+                    # Run standard safe tool through registry (path validation happens there)
+                    tool_result = self.tool_registry.execute(tool_name, arguments)
 
                 self.logs.append({
                     "step": round_num,

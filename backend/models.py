@@ -29,3 +29,23 @@ class TaskResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# ── Approval models ──────────────────────────────────────────────
+
+class ApprovalStatus(str, Enum):
+    PENDING = "pending"
+    APPROVED = "approved"
+    DENIED = "denied"
+    EXPIRED = "expired"
+
+
+class ApprovalResponse(BaseModel):
+    id: int
+    task_id: int
+    tool_name: str
+    arguments: Optional[dict] = None
+    reason: Optional[str] = None
+    status: ApprovalStatus
+    created_at: datetime
+    resolved_at: Optional[datetime] = None
