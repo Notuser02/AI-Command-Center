@@ -16,11 +16,18 @@ and doesn't care whether that goes to Ollama, Nebius, or anything else.
 """
 
 import json
+import threading
+import asyncio
 
 
 # Maximum tool-call rounds before we force-stop.
 # Prevents infinite loops if the LLM keeps calling tools forever.
 MAX_TOOL_ROUNDS = 10
+
+
+class CancellationError(Exception):
+    """Raised when the agent is cancelled during execution."""
+    pass
 
 
 class Agent:
@@ -31,10 +38,12 @@ class Agent:
         self.status = "idle"
         self.result = None
         self.logs = []      # step-by-step record of what the agent did
+        self._cancel_event = threading.Event()
 
     def run(self, task):
         self.status = "running"
         self.logs = []
+        self._cancel_event.clear()
 
         try:
             # ── No tools? Use the old simple path (backward compatible) ──
@@ -48,13 +57,65 @@ class Agent:
             self.status = "completed"
             return result
 
+        except CancellationError:
+            self.status = "cancelled"
+            self.logs.append({"step": "cancelled", "message": "Task cancelled by user"})
+            return self.result
         except Exception as e:
             self.status = "failed"
             self.result = f"Agent error: {e}"
             self.logs.append({"step": "error", "message": str(e)})
             return self.result
 
-    def _run_with_tools(self, task):
+    def cancel(self):
+        """Signal the agent to stop at the next checkpoint."""
+        self._cancel_event.set()
+
+    def _check_cancelled(self):
+        """Raise CancellationError if cancellation was requested."""
+        if self._cancel_event.is_set():
+            raise CancellationError("Task cancelled")
+
+    async def run_async(self, task: str, progress_callback=None):
+        """Run the agent asynchronously in a thread pool."""
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, self._run_with_progress, task, progress_callback)
+
+    def _run_with_progress(self, task, progress_callback):
+        """Wrapper that calls progress_callback after each round."""
+        self.status = "running"
+        self.logs = []
+        self._cancel_event.clear()
+
+        try:
+            if not self.tool_registry:
+                self.result = self.provider.generate(task)
+                self.status = "completed"
+                if progress_callback:
+                    progress_callback(self.logs)
+                return self.result
+
+            result = self._run_with_tools(task, progress_callback)
+            self.status = "completed"
+            if progress_callback:
+                progress_callback(self.logs)
+            return result
+
+        except CancellationError:
+            self.status = "cancelled"
+            self.logs.append({"step": "cancelled", "message": "Task cancelled by user"})
+            if progress_callback:
+                progress_callback(self.logs)
+            raise
+        except Exception as e:
+            self.status = "failed"
+            self.result = f"Agent error: {e}"
+            self.logs.append({"step": "error", "message": str(e)})
+            if progress_callback:
+                progress_callback(self.logs)
+            raise
+
+    def _run_with_tools(self, task, progress_callback=None):
         """
         The multi-step tool-calling loop.
 
@@ -79,8 +140,14 @@ class Agent:
         tool_definitions = self.tool_registry.get_definitions()
 
         for round_num in range(1, MAX_TOOL_ROUNDS + 1):
+            # Check for cancellation at the start of each round
+            self._check_cancelled()
+
             # Ask the LLM
             response = self.provider.chat(messages, tools=tool_definitions)
+
+            # Check for cancellation after LLM response (before processing tool calls)
+            self._check_cancelled()
 
             # Add the assistant's response to the conversation history
             messages.append(response)
@@ -95,10 +162,14 @@ class Agent:
                     "step": round_num,
                     "type": "final_answer",
                 })
+                if progress_callback:
+                    progress_callback(self.logs)
                 return self.result
 
             # Execute each tool the LLM requested
             for call in tool_calls:
+                self._check_cancelled()
+
                 func = call["function"]
                 tool_name = func["name"]
                 arguments = func.get("arguments", {})
@@ -130,6 +201,10 @@ class Agent:
 
                 # Feed the tool result back into the conversation
                 messages.append({"role": "tool", "content": tool_result})
+
+            # Call progress callback after each round
+            if progress_callback:
+                progress_callback(self.logs)
 
         # Safety limit reached
         self.result = "Agent reached maximum tool rounds without a final answer."
