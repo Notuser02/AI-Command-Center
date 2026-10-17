@@ -31,9 +31,16 @@ def init_db():
                 created_at TIMESTAMP NOT NULL,
                 updated_at TIMESTAMP NOT NULL,
                 result TEXT,
-                logs TEXT
+                logs TEXT,
+                messages TEXT
             )
         """)
+        # Ensure 'messages' column exists for existing tables
+        cursor = conn.execute("PRAGMA table_info(tasks)")
+        cols = [r["name"] for r in cursor.fetchall()]
+        if "messages" not in cols:
+            conn.execute("ALTER TABLE tasks ADD COLUMN messages TEXT")
+
         conn.execute("""
             CREATE TABLE IF NOT EXISTS approvals (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -52,7 +59,8 @@ def init_db():
 class Task:
     def __init__(self, id: int, task: str, provider: str, status: str,
                  created_at: datetime, updated_at: datetime,
-                 result: Optional[str] = None, logs: Optional[str] = None):
+                 result: Optional[str] = None, logs: Optional[str] = None,
+                 messages: Optional[str] = None):
         self.id = id
         self.task = task
         self.provider = provider
@@ -60,7 +68,8 @@ class Task:
         self.created_at = created_at
         self.updated_at = updated_at
         self.result = result
-        self.logs = json.loads(logs) if logs else None
+        self.logs = json.loads(logs) if logs else []
+        self.messages = json.loads(messages) if messages else []
 
 
 class TaskRepository:
@@ -68,6 +77,7 @@ class TaskRepository:
         pass
 
     def _row_to_task(self, row: sqlite3.Row) -> Task:
+        messages = row["messages"] if "messages" in row.keys() else None
         return Task(
             id=row["id"],
             task=row["task"],
@@ -76,20 +86,48 @@ class TaskRepository:
             created_at=datetime.fromisoformat(row["created_at"]),
             updated_at=datetime.fromisoformat(row["updated_at"]),
             result=row["result"],
-            logs=row["logs"]
+            logs=row["logs"],
+            messages=messages
         )
 
     def create(self, task: str, provider: str = "local") -> Task:
         now = datetime.now(timezone.utc).isoformat()
+        initial_messages = []
+        if task and task.strip():
+            initial_messages.append({
+                "role": "user",
+                "content": task,
+                "timestamp": now
+            })
+        messages_json = json.dumps(initial_messages)
         with get_db() as conn:
             cursor = conn.execute(
-                """INSERT INTO tasks (task, provider, status, created_at, updated_at)
-                   VALUES (?, ?, ?, ?, ?)""",
-                (task, provider, TaskStatus.PENDING.value, now, now)
+                """INSERT INTO tasks (task, provider, status, created_at, updated_at, messages)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (task, provider, TaskStatus.PENDING.value, now, now, messages_json)
             )
             conn.commit()
             task_id = cursor.lastrowid
             return self.get(task_id)
+
+    def append_message(self, task_id: int, role: str, content: str) -> List[dict]:
+        task = self.get(task_id)
+        if not task:
+            return []
+        messages = task.messages or []
+        now = datetime.now(timezone.utc).isoformat()
+        messages.append({
+            "role": role,
+            "content": content,
+            "timestamp": now
+        })
+        with get_db() as conn:
+            conn.execute(
+                "UPDATE tasks SET messages = ?, updated_at = ? WHERE id = ?",
+                (json.dumps(messages), now, task_id)
+            )
+            conn.commit()
+        return messages
 
     def get(self, task_id: int) -> Optional[Task]:
         with get_db() as conn:

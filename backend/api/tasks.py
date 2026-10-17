@@ -14,7 +14,7 @@ and you poll GET /tasks/{id} to check progress. (WebSockets later.)
 
 from fastapi import APIRouter, HTTPException
 from database import TaskRepository
-from models import TaskCreate, TaskResponse, TaskStatus
+from models import TaskCreate, MessageCreate, TaskResponse, TaskStatus
 from services.task_service import TaskService
 
 router = APIRouter()
@@ -32,7 +32,7 @@ def init(service: TaskService):
 def _task_to_response(task) -> TaskResponse:
     """
     Convert a database Task to a TaskResponse.
-    Extracted into a helper to avoid repeating this 5 times.
+    Extracted into a helper to avoid repeating this.
     """
     return TaskResponse(
         id=task.id,
@@ -42,7 +42,8 @@ def _task_to_response(task) -> TaskResponse:
         created_at=task.created_at,
         updated_at=task.updated_at,
         result=task.result,
-        logs=task.logs
+        logs=task.logs,
+        messages=task.messages
     )
 
 
@@ -86,6 +87,34 @@ async def start_task(task_id: int):
 def stop_task(task_id: int):
     if not task_service.cancel_task(task_id):
         raise HTTPException(status_code=400, detail="Task not running")
+    repo = TaskRepository()
+    task = repo.get(task_id)
+    return _task_to_response(task)
+
+
+@router.post("/tasks/{task_id}/messages", response_model=TaskResponse)
+async def send_message_to_task(task_id: int, message_in: MessageCreate):
+    """
+    Send a message / instruction into an existing task conversation.
+    The agent retains all prior context and history from this task!
+    """
+    success = await task_service.send_message(task_id, message_in.message)
+    if not success:
+        raise HTTPException(
+            status_code=400,
+            detail="Task not found or is currently executing another turn"
+        )
+    repo = TaskRepository()
+    task = repo.get(task_id)
+    return _task_to_response(task)
+
+
+@router.post("/tasks/{task_id}/complete", response_model=TaskResponse)
+def complete_task(task_id: int):
+    """Mark a task conversation as completed."""
+    success = task_service.complete_task(task_id)
+    if not success:
+        raise HTTPException(status_code=400, detail="Task not found")
     repo = TaskRepository()
     task = repo.get(task_id)
     return _task_to_response(task)

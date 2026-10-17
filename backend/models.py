@@ -5,6 +5,7 @@ from pydantic import BaseModel
 
 
 class TaskStatus(str, Enum):
+    IDLE = "idle"
     PENDING = "pending"
     RUNNING = "running"
     COMPLETED = "completed"
@@ -17,6 +18,10 @@ class TaskCreate(BaseModel):
     provider: str = "local"
 
 
+class MessageCreate(BaseModel):
+    message: str
+
+
 class TaskResponse(BaseModel):
     id: int
     task: str
@@ -26,6 +31,7 @@ class TaskResponse(BaseModel):
     updated_at: datetime
     result: Optional[str] = None
     logs: Optional[List] = None
+    messages: Optional[List[dict]] = None
 
     class Config:
         from_attributes = True

@@ -42,7 +42,7 @@ class Agent:
         self.logs = []      # step-by-step record of what the agent did
         self._cancel_event = threading.Event()
 
-    def run(self, task):
+    def run(self, task, history=None):
         self.status = "running"
         self.logs = []
         self._cancel_event.clear()
@@ -55,7 +55,7 @@ class Agent:
                 return self.result
 
             # ── Tool-calling loop ────────────────────────────────────
-            result = self._run_with_tools(task)
+            result = self._run_with_tools(task, history=history)
             self.status = "completed"
             return result
 
@@ -78,12 +78,12 @@ class Agent:
         if self._cancel_event.is_set():
             raise CancellationError("Task cancelled")
 
-    async def run_async(self, task: str, progress_callback=None):
-        """Run the agent asynchronously in a thread pool."""
+    async def run_async(self, task: str, progress_callback=None, history=None):
+        """Run the agent asynchronously in a thread pool with conversation history."""
         loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, self._run_with_progress, task, progress_callback)
+        return await loop.run_in_executor(None, self._run_with_progress, task, progress_callback, history)
 
-    def _run_with_progress(self, task, progress_callback):
+    def _run_with_progress(self, task, progress_callback, history=None):
         """Wrapper that calls progress_callback after each round."""
         self.status = "running"
         self.logs = []
@@ -97,7 +97,7 @@ class Agent:
                     progress_callback(self.logs)
                 return self.result
 
-            result = self._run_with_tools(task, progress_callback)
+            result = self._run_with_tools(task, progress_callback, history=history)
             self.status = "completed"
             if progress_callback:
                 progress_callback(self.logs)
@@ -117,27 +117,23 @@ class Agent:
                 progress_callback(self.logs)
             raise
 
-    def _run_with_tools(self, task, progress_callback=None):
+    def _run_with_tools(self, task, progress_callback=None, history=None):
         """
-        The multi-step tool-calling loop.
-
-        The conversation looks like this to the LLM:
-
-        [system]  You are an AI assistant with these tools...
-        [user]    Analyze this project
-        [assistant]  (tool_call: list_files)
-        [tool]    main.py, agent/, providers/
-        [assistant]  (tool_call: read_file main.py)
-        [tool]    from fastapi import FastAPI ...
-        [assistant]  Here is my analysis: ...    ← final answer
+        The multi-step tool-calling loop with conversation history.
         """
-        # Build the system prompt — tells the LLM what it can do
         system_prompt = self._build_system_prompt()
 
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": task},
-        ]
+        messages = [{"role": "system", "content": system_prompt}]
+
+        if history:
+            for item in history:
+                role = item.get("role", "user")
+                if role in ["user", "assistant", "system"]:
+                    messages.append({"role": role, "content": item.get("content", "")})
+            if not messages or messages[-1].get("content") != task:
+                messages.append({"role": "user", "content": task})
+        else:
+            messages.append({"role": "user", "content": task})
 
         tool_definitions = self.tool_registry.get_definitions()
 

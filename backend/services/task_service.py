@@ -52,7 +52,7 @@ class TaskService:
         else:
             raise ValueError(f"Unknown provider: {provider_name}")
 
-    def _run_task_background(self, task_id: int, agent: Agent, task: str):
+    def _run_task_background(self, task_id: int, agent: Agent, task: str, history=None):
         def progress_callback(logs):
             self.repo.update_logs(task_id, logs)
             if self.connection_manager and logs:
@@ -63,13 +63,20 @@ class TaskService:
 
         async def run():
             try:
-                result = await agent.run_async(task, progress_callback)
+                result = await agent.run_async(task, progress_callback, history=history)
+                self.repo.append_message(task_id, role="assistant", content=result)
                 self.repo.update_result(task_id, result)
-                self.repo.update_status(task_id, TaskStatus.COMPLETED)
+                # Keep task in IDLE status so user can continue sending messages to it!
+                self.repo.update_status(task_id, TaskStatus.IDLE)
                 if self.connection_manager:
+                    self.connection_manager.broadcast("task_message", {
+                        "task_id": task_id,
+                        "role": "assistant",
+                        "content": result
+                    })
                     self.connection_manager.broadcast("task_status_changed", {
                         "task_id": task_id,
-                        "status": TaskStatus.COMPLETED.value,
+                        "status": TaskStatus.IDLE.value,
                         "result": result
                     })
             except CancellationError:
@@ -97,7 +104,10 @@ class TaskService:
 
     async def start_task(self, task_id: int) -> bool:
         task = self.repo.get(task_id)
-        if not task or task.status != TaskStatus.PENDING.value:
+        if not task or task.status not in [TaskStatus.PENDING.value, TaskStatus.IDLE.value]:
+            return False
+
+        if self.is_task_running(task_id):
             return False
 
         await self.semaphore.acquire()
@@ -124,8 +134,62 @@ class TaskService:
                 future=None
             )
 
-        self._run_task_background(task_id, agent, task.task)
+        self._run_task_background(task_id, agent, task.task, history=task.messages or [])
         return True
+
+    async def send_message(self, task_id: int, message: str) -> bool:
+        task = self.repo.get(task_id)
+        if not task:
+            return False
+
+        if self.is_task_running(task_id):
+            return False
+
+        # Add user message to history
+        updated_messages = self.repo.append_message(task_id, role="user", content=message)
+
+        if self.connection_manager:
+            self.connection_manager.broadcast("task_message", {
+                "task_id": task_id,
+                "role": "user",
+                "content": message
+            })
+
+        await self.semaphore.acquire()
+        self.repo.update_status(task_id, TaskStatus.RUNNING)
+        if self.connection_manager:
+            self.connection_manager.broadcast("task_status_changed", {
+                "task_id": task_id,
+                "status": TaskStatus.RUNNING.value
+            })
+
+        provider = self._get_provider(task.provider)
+        agent = Agent(
+            provider,
+            tool_registry=self.tool_registry,
+            approval_service=self.approval_service,
+            task_id=task_id
+        )
+
+        with self._lock:
+            self.running_tasks[task_id] = RunningTask(
+                task_id=task_id,
+                agent=agent,
+                future=None
+            )
+
+        self._run_task_background(task_id, agent, message, history=updated_messages)
+        return True
+
+    def complete_task(self, task_id: int) -> bool:
+        """Mark task explicitly as completed / archived."""
+        success = self.repo.update_status(task_id, TaskStatus.COMPLETED)
+        if success and self.connection_manager:
+            self.connection_manager.broadcast("task_status_changed", {
+                "task_id": task_id,
+                "status": TaskStatus.COMPLETED.value
+            })
+        return success
 
     def cancel_task(self, task_id: int) -> bool:
         with self._lock:
