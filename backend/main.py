@@ -53,6 +53,24 @@ app.include_router(tasks.router)
 app.include_router(approvals.router)
 app.include_router(websocket.router)
 
+# ── Web Browser CLI Dashboard ──
+STATIC_DIR = os.path.join(PROJECT_DIR, "static")
+INDEX_HTML = os.path.join(STATIC_DIR, "index.html")
+
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
+
+if os.path.isdir(STATIC_DIR):
+    app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+@app.get("/", response_class=FileResponse)
+def serve_dashboard():
+    return FileResponse(INDEX_HTML)
+
+@app.get("/dashboard", response_class=FileResponse)
+def serve_dashboard_alias():
+    return FileResponse(INDEX_HTML)
+
 
 @app.on_event("startup")
 def startup():

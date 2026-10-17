@@ -1,0 +1,891 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Command Center // PC Terminal Monitor</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-dark: #070a0f;
+      --bg-panel: #0d131d;
+      --bg-panel-header: #131b29;
+      --border-color: #1e2c40;
+      --border-accent: #00f0ff;
+      --text-main: #d1d9e6;
+      --text-dim: #677b96;
+      --neon-cyan: #00f0ff;
+      --neon-green: #00ff88;
+      --neon-yellow: #ffb800;
+      --neon-red: #ff3366;
+      --neon-purple: #b55fe6;
+      --font-mono: 'Fira Code', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg-dark);
+      color: var(--text-main);
+      font-family: var(--font-mono);
+      font-size: 13px;
+      line-height: 1.5;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow-x: hidden;
+    }
+
+    /* Scanline subtle overlay */
+    body::before {
+      content: "";
+      position: fixed;
+      top: 0; left: 0; width: 100vw; height: 100vh;
+      background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%);
+      background-size: 100% 4px;
+      z-index: 999;
+      pointer-events: none;
+      opacity: 0.35;
+    }
+
+    /* Header */
+    header {
+      background: var(--bg-panel-header);
+      border-bottom: 1px solid var(--border-color);
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 12px;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .brand-title {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--neon-cyan);
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      text-shadow: 0 0 10px rgba(0, 240, 255, 0.4);
+    }
+
+    .brand-badge {
+      background: rgba(0, 240, 255, 0.1);
+      border: 1px solid var(--neon-cyan);
+      color: var(--neon-cyan);
+      padding: 2px 8px;
+      font-size: 10px;
+      border-radius: 3px;
+      font-weight: 600;
+    }
+
+    .status-group {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      font-size: 12px;
+    }
+
+    .status-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--text-dim);
+    }
+
+    .indicator-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--neon-red);
+      box-shadow: 0 0 8px var(--neon-red);
+      transition: all 0.3s ease;
+    }
+
+    .indicator-dot.online {
+      background: var(--neon-green);
+      box-shadow: 0 0 8px var(--neon-green);
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0% { transform: scale(0.95); opacity: 0.8; }
+      50% { transform: scale(1.15); opacity: 1; }
+      100% { transform: scale(0.95); opacity: 0.8; }
+    }
+
+    /* Main Container */
+    main {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 480px 1fr;
+      gap: 16px;
+      padding: 16px 20px;
+      max-width: 1920px;
+      margin: 0 auto;
+      width: 100%;
+    }
+
+    @media (max-width: 1100px) {
+      main {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    /* Panels */
+    .panel {
+      background: var(--bg-panel);
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+    }
+
+    .panel-header {
+      background: var(--bg-panel-header);
+      border-bottom: 1px solid var(--border-color);
+      padding: 10px 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-weight: 600;
+      font-size: 12px;
+      letter-spacing: 0.8px;
+      color: var(--neon-cyan);
+    }
+
+    .panel-header-controls {
+      display: flex;
+      gap: 8px;
+    }
+
+    .btn-action {
+      background: #192333;
+      border: 1px solid var(--border-color);
+      color: var(--text-main);
+      padding: 4px 10px;
+      font-family: inherit;
+      font-size: 11px;
+      border-radius: 3px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn-action:hover {
+      border-color: var(--neon-cyan);
+      color: #fff;
+    }
+
+    .btn-primary {
+      background: rgba(0, 240, 255, 0.15);
+      border: 1px solid var(--neon-cyan);
+      color: var(--neon-cyan);
+      font-weight: 600;
+    }
+
+    .btn-primary:hover {
+      background: var(--neon-cyan);
+      color: #000;
+      box-shadow: 0 0 10px rgba(0, 240, 255, 0.5);
+    }
+
+    .btn-danger {
+      background: rgba(255, 51, 102, 0.15);
+      border: 1px solid var(--neon-red);
+      color: var(--neon-red);
+    }
+
+    .btn-danger:hover {
+      background: var(--neon-red);
+      color: #fff;
+      box-shadow: 0 0 10px rgba(255, 51, 102, 0.5);
+    }
+
+    .btn-success {
+      background: rgba(0, 255, 136, 0.15);
+      border: 1px solid var(--neon-green);
+      color: var(--neon-green);
+    }
+
+    .btn-success:hover {
+      background: var(--neon-green);
+      color: #000;
+      box-shadow: 0 0 10px rgba(0, 255, 136, 0.5);
+    }
+
+    /* Left Column Components */
+    .left-col {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    /* Task Dispatch Form */
+    .dispatch-box {
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .prompt-input {
+      background: #090e16;
+      border: 1px solid var(--border-color);
+      color: #fff;
+      padding: 10px 12px;
+      font-family: inherit;
+      font-size: 13px;
+      border-radius: 4px;
+      width: 100%;
+      resize: vertical;
+      min-height: 65px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .prompt-input:focus {
+      border-color: var(--neon-cyan);
+      box-shadow: 0 0 8px rgba(0, 240, 255, 0.25);
+    }
+
+    .dispatch-controls {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+    }
+
+    select.provider-select {
+      background: #090e16;
+      border: 1px solid var(--border-color);
+      color: var(--text-main);
+      padding: 6px 10px;
+      font-family: inherit;
+      font-size: 12px;
+      border-radius: 4px;
+      outline: none;
+    }
+
+    /* Tasks Table */
+    .tasks-container {
+      overflow-y: auto;
+      max-height: 400px;
+    }
+
+    table.tasks-table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+    }
+
+    table.tasks-table th {
+      background: #111824;
+      padding: 8px 12px;
+      font-size: 11px;
+      color: var(--text-dim);
+      border-bottom: 1px solid var(--border-color);
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+
+    table.tasks-table td {
+      padding: 10px 12px;
+      border-bottom: 1px solid #131b29;
+      font-size: 12px;
+      vertical-align: middle;
+    }
+
+    table.tasks-table tr:hover {
+      background: rgba(0, 240, 255, 0.03);
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 2px 7px;
+      border-radius: 3px;
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .badge-pending { background: #263238; color: #b0bec5; border: 1px solid #37474f; }
+    .badge-running { background: rgba(255, 184, 0, 0.15); color: var(--neon-yellow); border: 1px solid var(--neon-yellow); }
+    .badge-completed { background: rgba(0, 255, 136, 0.15); color: var(--neon-green); border: 1px solid var(--neon-green); }
+    .badge-failed { background: rgba(255, 51, 102, 0.15); color: var(--neon-red); border: 1px solid var(--neon-red); }
+    .badge-cancelled { background: rgba(255, 136, 0, 0.15); color: #ff8800; border: 1px solid #ff8800; }
+
+    /* Security / Approvals Banner */
+    .approval-alert {
+      display: none;
+      background: rgba(255, 51, 102, 0.1);
+      border: 1px solid var(--neon-red);
+      border-radius: 6px;
+      padding: 14px 18px;
+      margin-bottom: 16px;
+      animation: alertPulse 1.5s infinite alternate;
+    }
+
+    .approval-alert.active {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    @keyframes alertPulse {
+      from { box-shadow: 0 0 10px rgba(255, 51, 102, 0.2); }
+      to { box-shadow: 0 0 20px rgba(255, 51, 102, 0.4); }
+    }
+
+    .approval-title {
+      color: var(--neon-red);
+      font-weight: 700;
+      font-size: 13px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .approval-details {
+      background: #080c13;
+      border: 1px solid rgba(255, 51, 102, 0.3);
+      padding: 10px 14px;
+      border-radius: 4px;
+      font-size: 12px;
+      color: #fff;
+    }
+
+    .approval-buttons {
+      display: flex;
+      gap: 12px;
+      justify-content: flex-end;
+    }
+
+    /* Right Column: Terminal Feed */
+    .terminal-panel {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-height: 550px;
+    }
+
+    .terminal-screen {
+      background: #05070a;
+      flex: 1;
+      padding: 14px 16px;
+      overflow-y: auto;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .log-line {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      word-break: break-all;
+    }
+
+    .log-time {
+      color: var(--text-dim);
+      flex-shrink: 0;
+    }
+
+    .log-tag {
+      font-weight: 700;
+      padding: 1px 5px;
+      border-radius: 2px;
+      font-size: 10px;
+      flex-shrink: 0;
+    }
+
+    .log-tag-sys { background: rgba(0, 240, 255, 0.15); color: var(--neon-cyan); border: 1px solid var(--neon-cyan); }
+    .log-tag-task { background: rgba(181, 95, 230, 0.15); color: var(--neon-purple); border: 1px solid var(--neon-purple); }
+    .log-tag-tool { background: rgba(255, 184, 0, 0.15); color: var(--neon-yellow); border: 1px solid var(--neon-yellow); }
+    .log-tag-res { background: rgba(103, 123, 150, 0.2); color: #a0b2c6; }
+    .log-tag-alert { background: rgba(255, 51, 102, 0.2); color: var(--neon-red); border: 1px solid var(--neon-red); }
+    .log-tag-ok { background: rgba(0, 255, 136, 0.15); color: var(--neon-green); border: 1px solid var(--neon-green); }
+
+    .log-content {
+      color: var(--text-main);
+      white-space: pre-wrap;
+    }
+
+    /* Footer */
+    footer {
+      border-top: 1px solid var(--border-color);
+      padding: 8px 20px;
+      background: var(--bg-panel-header);
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      color: var(--text-dim);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top System Header -->
+  <header>
+    <div class="brand">
+      <div class="brand-title">AI Command Center</div>
+      <div class="brand-badge">PC TERMINAL WEB GUI</div>
+    </div>
+    <div class="status-group">
+      <div class="status-item">
+        <div id="wsIndicator" class="indicator-dot"></div>
+        <span id="wsStatusText">CONNECTING...</span>
+      </div>
+      <div class="status-item">
+        <span>MODEL:</span>
+        <strong id="modelName" style="color: var(--neon-cyan);">Qwen 3.5 9B (Local)</strong>
+      </div>
+      <div class="status-item">
+        <span>TIME:</span>
+        <span id="clockDisplay">--:--:--</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Body -->
+  <main>
+    <!-- Left Column: Controls & Task List -->
+    <div class="left-col">
+
+      <!-- Human-in-the-Loop Security Box (Hidden until triggered) -->
+      <div id="approvalAlert" class="approval-alert">
+        <div class="approval-title">
+          <span>⚠️ [SECURITY GATEWAY] HUMAN APPROVAL REQUIRED</span>
+        </div>
+        <div id="approvalDetails" class="approval-details">
+          Agent requested sensitive action...
+        </div>
+        <div class="approval-buttons">
+          <button id="btnDeny" class="btn-action btn-danger">✖ DENY ACTION</button>
+          <button id="btnApprove" class="btn-action btn-success">✔ APPROVE ACTION</button>
+        </div>
+      </div>
+
+      <!-- Task Dispatch Panel -->
+      <div class="panel">
+        <div class="panel-header">
+          <span>&gt; DISPATCH NEW TASK</span>
+          <span style="color: var(--text-dim); font-size: 10px;">AUTONOMOUS AGENT</span>
+        </div>
+        <div class="dispatch-box">
+          <textarea id="taskInput" class="prompt-input" placeholder="Type instructions for the agent (e.g. 'List files in project' or 'Check git status')..."></textarea>
+          <div class="dispatch-controls">
+            <select id="providerSelect" class="provider-select">
+              <option value="local">Provider: Local (Qwen 3.5 9B)</option>
+              <option value="online">Provider: Online (Nebius / Cloud)</option>
+            </select>
+            <button id="btnDispatch" class="btn-action btn-primary">&gt; RUN AGENT</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tasks List Panel -->
+      <div class="panel" style="flex: 1;">
+        <div class="panel-header">
+          <span>&gt; TASK MANAGER (<span id="taskCount">0</span>)</span>
+          <div class="panel-header-controls">
+            <button id="btnRefreshTasks" class="btn-action">REFRESH</button>
+          </div>
+        </div>
+        <div class="tasks-container">
+          <table class="tasks-table">
+            <thead>
+              <tr>
+                <th style="width: 40px;">ID</th>
+                <th>Task Description</th>
+                <th style="width: 75px;">Status</th>
+                <th style="width: 90px; text-align: center;">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="tasksTableBody">
+              <tr>
+                <td colspan="4" style="text-align: center; color: var(--text-dim); padding: 20px;">
+                  Loading tasks...
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Right Column: Live Terminal Stream -->
+    <div class="panel terminal-panel">
+      <div class="panel-header">
+        <span>&gt; LIVE AGENT EXECUTION STREAM [WEBSOCKET]</span>
+        <div class="panel-header-controls">
+          <label style="font-size: 11px; color: var(--text-dim); display: flex; align-items: center; gap: 4px; cursor: pointer;">
+            <input type="checkbox" id="autoScrollCheck" checked> AUTO-SCROLL
+          </label>
+          <button id="btnClearLogs" class="btn-action">CLEAR</button>
+        </div>
+      </div>
+      <div id="terminalScreen" class="terminal-screen">
+        <!-- Live logs will be appended here -->
+      </div>
+    </div>
+  </main>
+
+  <!-- Footer -->
+  <footer>
+    <div>AI Command Center &copy; Remote PC Agent Architecture</div>
+    <div>WS: <span id="wsUrlText">ws://127.0.0.1:8000/ws</span> | REST: <span>http://127.0.0.1:8000</span></div>
+  </footer>
+
+  <script>
+    // Configuration
+    const HTTP_BASE = window.location.origin;
+    const WS_URL = (window.location.protocol === 'https:' ? 'wss://' : 'ws://') + window.location.host + '/ws';
+
+    // State
+    let activeApproval = null;
+    let autoScroll = true;
+
+    // Elements
+    const wsIndicator = document.getElementById('wsIndicator');
+    const wsStatusText = document.getElementById('wsStatusText');
+    const wsUrlText = document.getElementById('wsUrlText');
+    const clockDisplay = document.getElementById('clockDisplay');
+    const terminalScreen = document.getElementById('terminalScreen');
+    const tasksTableBody = document.getElementById('tasksTableBody');
+    const taskCount = document.getElementById('taskCount');
+    const taskInput = document.getElementById('taskInput');
+    const providerSelect = document.getElementById('providerSelect');
+    const btnDispatch = document.getElementById('btnDispatch');
+    const btnRefreshTasks = document.getElementById('btnRefreshTasks');
+    const btnClearLogs = document.getElementById('btnClearLogs');
+    const autoScrollCheck = document.getElementById('autoScrollCheck');
+    const approvalAlert = document.getElementById('approvalAlert');
+    const approvalDetails = document.getElementById('approvalDetails');
+    const btnApprove = document.getElementById('btnApprove');
+    const btnDeny = document.getElementById('btnDeny');
+
+    wsUrlText.textContent = WS_URL;
+
+    // Clock
+    function updateClock() {
+      const now = new Date();
+      clockDisplay.textContent = now.toTimeString().split(' ')[0];
+    }
+    setInterval(updateClock, 1000);
+    updateClock();
+
+    // Logging to Terminal Feed
+    function appendLog(tag, tagClass, content) {
+      const line = document.createElement('div');
+      line.className = 'log-line';
+
+      const time = new Date().toTimeString().split(' ')[0];
+      line.innerHTML = `
+        <span class="log-time">[${time}]</span>
+        <span class="log-tag ${tagClass}">${tag}</span>
+        <span class="log-content">${escapeHtml(content)}</span>
+      `;
+
+      terminalScreen.appendChild(line);
+
+      if (autoScroll) {
+        terminalScreen.scrollTop = terminalScreen.scrollHeight;
+      }
+    }
+
+    function escapeHtml(str) {
+      if (typeof str !== 'string') str = JSON.stringify(str, null, 2) || '';
+      return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    // Auto-scroll toggle
+    autoScrollCheck.addEventListener('change', (e) => {
+      autoScroll = e.target.checked;
+    });
+
+    btnClearLogs.addEventListener('click', () => {
+      terminalScreen.innerHTML = '';
+      appendLog('SYS', 'log-tag-sys', 'Terminal log cleared.');
+    });
+
+    // WebSocket Connection
+    let socket = null;
+
+    function connectWebSocket() {
+      appendLog('NET', 'log-tag-sys', `Connecting to WebSocket: ${WS_URL}...`);
+      socket = new WebSocket(WS_URL);
+
+      socket.onopen = () => {
+        wsIndicator.className = 'indicator-dot online';
+        wsStatusText.textContent = 'ONLINE';
+        wsStatusText.style.color = 'var(--neon-green)';
+        appendLog('NET', 'log-tag-ok', 'WebSocket connected. Real-time stream active.');
+      };
+
+      socket.onclose = () => {
+        wsIndicator.className = 'indicator-dot';
+        wsStatusText.textContent = 'OFFLINE (RETRYING)';
+        wsStatusText.style.color = 'var(--neon-red)';
+        appendLog('NET', 'log-tag-alert', 'WebSocket connection lost. Retrying in 3s...');
+        setTimeout(connectWebSocket, 3000);
+      };
+
+      socket.onerror = (err) => {
+        appendLog('ERR', 'log-tag-alert', 'WebSocket error observed.');
+      };
+
+      socket.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data);
+          handleWebSocketMessage(msg);
+        } catch (e) {
+          appendLog('RAW', 'log-tag-sys', event.data);
+        }
+      };
+    }
+
+    function handleWebSocketMessage(msg) {
+      const eventType = msg.event;
+      const data = msg.data || {};
+
+      switch (eventType) {
+        case 'connected':
+          appendLog('SYS', 'log-tag-sys', data.message || 'Stream ready.');
+          break;
+
+        case 'task_created':
+          appendLog('TASK', 'log-tag-task', `New Task #${data.id} created: "${data.task}"`);
+          loadTasks();
+          break;
+
+        case 'task_status_changed':
+          const st = (data.status || '').toUpperCase();
+          const tagClass = (st === 'RUNNING') ? 'log-tag-tool' : (st === 'COMPLETED') ? 'log-tag-ok' : 'log-tag-alert';
+          appendLog('STATUS', tagClass, `Task #${data.task_id} status is now: [${st}]`);
+          if (data.result) {
+            appendLog('RESULT', 'log-tag-res', `Task #${data.task_id} output:\n${data.result}`);
+          }
+          loadTasks();
+          break;
+
+        case 'task_log':
+          const log = data.log || {};
+          if (log.type === 'tool_call') {
+            appendLog('TOOL_CALL', 'log-tag-tool', `Task #${data.task_id} invoking tool '${log.tool}' with args: ${JSON.stringify(log.arguments)}`);
+          } else if (log.type === 'tool_result') {
+            appendLog('TOOL_RES', 'log-tag-res', `Task #${data.task_id} tool '${log.tool}' result:\n${log.result}`);
+          } else if (log.type === 'final_answer') {
+            appendLog('AGENT', 'log-tag-ok', `Task #${data.task_id} completed reasoning and produced final response.`);
+          } else if (log.type === 'approval_required') {
+            appendLog('SECURITY', 'log-tag-alert', `Task #${data.task_id} requires approval for tool '${log.tool}'!`);
+          }
+          break;
+
+        case 'approval_required':
+          appendLog('APPROVAL', 'log-tag-alert', `⚠️ Human approval requested for Task #${data.task_id}: ${data.tool_name}`);
+          showApprovalPrompt(data);
+          break;
+
+        case 'approval_resolved':
+          appendLog('APPROVAL', 'log-tag-ok', `Approval #${data.approval_id} resolved with status: ${data.status.toUpperCase()}`);
+          hideApprovalPrompt();
+          break;
+
+        default:
+          appendLog('EVENT', 'log-tag-sys', `${eventType}: ${JSON.stringify(data)}`);
+      }
+    }
+
+    // Approvals Management
+    function showApprovalPrompt(approval) {
+      activeApproval = approval;
+      const args = JSON.stringify(approval.arguments || {}, null, 2);
+      approvalDetails.innerHTML = `
+        <div><strong>Approval #${approval.approval_id || approval.id}</strong> | <strong>Task #${approval.task_id}</strong></div>
+        <div style="margin-top: 4px;">Action: <span style="color: var(--neon-cyan);">${approval.tool_name}</span></div>
+        <div style="margin-top: 4px; font-size: 11px; color: var(--neon-yellow);">Arguments: ${args}</div>
+      `;
+      approvalAlert.className = 'approval-alert active';
+    }
+
+    function hideApprovalPrompt() {
+      activeApproval = null;
+      approvalAlert.className = 'approval-alert';
+    }
+
+    async function checkPendingApprovals() {
+      try {
+        const res = await fetch(`${HTTP_BASE}/approvals/pending`);
+        if (res.ok) {
+          const list = await res.json();
+          if (list && list.length > 0) {
+            showApprovalPrompt(list[0]);
+          } else {
+            hideApprovalPrompt();
+          }
+        }
+      } catch (e) {}
+    }
+
+    btnApprove.addEventListener('click', async () => {
+      if (!activeApproval) return;
+      const id = activeApproval.approval_id || activeApproval.id;
+      appendLog('ACTION', 'log-tag-ok', `Sending APPROVAL for #${id}...`);
+      try {
+        const res = await fetch(`${HTTP_BASE}/approvals/${id}/approve`, { method: 'POST' });
+        if (res.ok) {
+          hideApprovalPrompt();
+        }
+      } catch (e) {
+        alert('Failed to approve action: ' + e);
+      }
+    });
+
+    btnDeny.addEventListener('click', async () => {
+      if (!activeApproval) return;
+      const id = activeApproval.approval_id || activeApproval.id;
+      appendLog('ACTION', 'log-tag-alert', `Sending DENIAL for #${id}...`);
+      try {
+        const res = await fetch(`${HTTP_BASE}/approvals/${id}/deny`, { method: 'POST' });
+        if (res.ok) {
+          hideApprovalPrompt();
+        }
+      } catch (e) {
+        alert('Failed to deny action: ' + e);
+      }
+    });
+
+    // Task Management
+    async function loadTasks() {
+      try {
+        const res = await fetch(`${HTTP_BASE}/tasks?limit=25`);
+        if (!res.ok) return;
+        const tasks = await res.json();
+        renderTasks(tasks);
+      } catch (e) {
+        tasksTableBody.innerHTML = `<tr><td colspan="4" style="color: var(--neon-red); text-align: center;">Error fetching tasks.</td></tr>`;
+      }
+    }
+
+    function renderTasks(tasks) {
+      taskCount.textContent = tasks.length;
+      if (!tasks || tasks.length === 0) {
+        tasksTableBody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: var(--text-dim); padding: 20px;">No tasks created yet. Dispatch one above!</td></tr>`;
+        return;
+      }
+
+      tasksTableBody.innerHTML = '';
+      tasks.forEach(t => {
+        const tr = document.createElement('tr');
+        const badgeClass = `badge-${t.status.toLowerCase()}`;
+
+        let actionBtn = '';
+        if (t.status === 'pending') {
+          actionBtn = `<button class="btn-action btn-success" onclick="startTask(${t.id})">START</button>`;
+        } else if (t.status === 'running') {
+          actionBtn = `<button class="btn-action btn-danger" onclick="stopTask(${t.id})">STOP</button>`;
+        } else {
+          actionBtn = `<button class="btn-action" onclick="viewTaskResult(${t.id})">VIEW</button>`;
+        }
+
+        tr.innerHTML = `
+          <td><strong>#${t.id}</strong></td>
+          <td>
+            <div style="color: #fff; font-weight: 500;">${escapeHtml(t.task)}</div>
+            <div style="font-size: 10px; color: var(--text-dim); margin-top: 2px;">Provider: ${t.provider}</div>
+          </td>
+          <td><span class="badge ${badgeClass}">${t.status}</span></td>
+          <td style="text-align: center;">${actionBtn}</td>
+        `;
+        tasksTableBody.appendChild(tr);
+      });
+    }
+
+    window.startTask = async function(id) {
+      appendLog('ACTION', 'log-tag-tool', `Starting Task #${id}...`);
+      try {
+        await fetch(`${HTTP_BASE}/tasks/${id}/start`, { method: 'POST' });
+      } catch (e) {
+        alert('Error starting task: ' + e);
+      }
+    };
+
+    window.stopTask = async function(id) {
+      appendLog('ACTION', 'log-tag-alert', `Stopping Task #${id}...`);
+      try {
+        await fetch(`${HTTP_BASE}/tasks/${id}/stop`, { method: 'POST' });
+      } catch (e) {
+        alert('Error stopping task: ' + e);
+      }
+    };
+
+    window.viewTaskResult = async function(id) {
+      try {
+        const res = await fetch(`${HTTP_BASE}/tasks/${id}`);
+        const t = await res.json();
+        appendLog('INSPECT', 'log-tag-res', `=== TASK #${t.id} RESULT ===\n${t.result || '(No result recorded)'}`);
+      } catch (e) {
+        alert('Error fetching task: ' + e);
+      }
+    };
+
+    // Dispatch new task
+    btnDispatch.addEventListener('click', async () => {
+      const text = taskInput.value.trim();
+      if (!text) {
+        taskInput.focus();
+        return;
+      }
+
+      const provider = providerSelect.value;
+      appendLog('DISPATCH', 'log-tag-task', `Dispatching new task: "${text}" [${provider}]...`);
+      btnDispatch.disabled = true;
+
+      try {
+        const createRes = await fetch(`${HTTP_BASE}/tasks`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ task: text, provider: provider })
+        });
+
+        if (!createRes.ok) throw new Error('Failed to create task');
+        const created = await createRes.json();
+
+        // Immediately start task
+        await fetch(`${HTTP_BASE}/tasks/${created.id}/start`, { method: 'POST' });
+        taskInput.value = '';
+      } catch (e) {
+        appendLog('ERR', 'log-tag-alert', `Error dispatching task: ${e.message}`);
+      } finally {
+        btnDispatch.disabled = false;
+      }
+    });
+
+    btnRefreshTasks.addEventListener('click', loadTasks);
+
+    // Initial load
+    connectWebSocket();
+    loadTasks();
+    checkPendingApprovals();
+  </script>
+</body>
+</html>
