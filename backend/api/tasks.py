@@ -50,7 +50,10 @@ def _task_to_response(task) -> TaskResponse:
 def create_task(task_in: TaskCreate):
     repo = TaskRepository()
     task = repo.create(task_in.task, task_in.provider)
-    return _task_to_response(task)
+    resp = _task_to_response(task)
+    if task_service and task_service.connection_manager:
+        task_service.connection_manager.broadcast("task_created", resp.model_dump())
+    return resp
 
 
 @router.get("/tasks", response_model=list[TaskResponse])

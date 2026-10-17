@@ -30,14 +30,19 @@ class TaskService:
         self,
         tool_registry: ToolRegistry,
         approval_service: Optional[ApprovalService] = None,
+        connection_manager=None,
         max_concurrent: int = MAX_CONCURRENT_TASKS
     ):
         self.tool_registry = tool_registry
         self.approval_service = approval_service
+        self.connection_manager = connection_manager
         self.semaphore = asyncio.Semaphore(max_concurrent)
         self.running_tasks: Dict[int, RunningTask] = {}
         self.repo = TaskRepository()
         self._lock = threading.Lock()
+
+    def set_connection_manager(self, manager):
+        self.connection_manager = manager
 
     def _get_provider(self, provider_name: str):
         if provider_name == "local":
@@ -50,17 +55,39 @@ class TaskService:
     def _run_task_background(self, task_id: int, agent: Agent, task: str):
         def progress_callback(logs):
             self.repo.update_logs(task_id, logs)
+            if self.connection_manager and logs:
+                self.connection_manager.broadcast("task_log", {
+                    "task_id": task_id,
+                    "log": logs[-1]
+                })
 
         async def run():
             try:
                 result = await agent.run_async(task, progress_callback)
                 self.repo.update_result(task_id, result)
                 self.repo.update_status(task_id, TaskStatus.COMPLETED)
+                if self.connection_manager:
+                    self.connection_manager.broadcast("task_status_changed", {
+                        "task_id": task_id,
+                        "status": TaskStatus.COMPLETED.value,
+                        "result": result
+                    })
             except CancellationError:
                 self.repo.update_status(task_id, TaskStatus.CANCELLED)
+                if self.connection_manager:
+                    self.connection_manager.broadcast("task_status_changed", {
+                        "task_id": task_id,
+                        "status": TaskStatus.CANCELLED.value
+                    })
             except Exception as e:
                 self.repo.update_result(task_id, f"Error: {e}")
                 self.repo.update_status(task_id, TaskStatus.FAILED)
+                if self.connection_manager:
+                    self.connection_manager.broadcast("task_status_changed", {
+                        "task_id": task_id,
+                        "status": TaskStatus.FAILED.value,
+                        "error": str(e)
+                    })
             finally:
                 with self._lock:
                     self.running_tasks.pop(task_id, None)
@@ -76,6 +103,11 @@ class TaskService:
         await self.semaphore.acquire()
 
         self.repo.update_status(task_id, TaskStatus.RUNNING)
+        if self.connection_manager:
+            self.connection_manager.broadcast("task_status_changed", {
+                "task_id": task_id,
+                "status": TaskStatus.RUNNING.value
+            })
 
         provider = self._get_provider(task.provider)
         agent = Agent(

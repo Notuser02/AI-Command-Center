@@ -29,10 +29,14 @@ class ActiveApproval:
 
 
 class ApprovalService:
-    def __init__(self, repo: Optional[ApprovalRepository] = None):
+    def __init__(self, repo: Optional[ApprovalRepository] = None, connection_manager=None):
         self.repo = repo or ApprovalRepository()
+        self.connection_manager = connection_manager
         self._active: Dict[int, ActiveApproval] = {}
         self._lock = threading.Lock()
+
+    def set_connection_manager(self, manager):
+        self.connection_manager = manager
 
     def request_approval(
         self,
@@ -55,6 +59,17 @@ class ApprovalService:
                 event=threading.Event(),
                 decision=None
             )
+
+        if self.connection_manager:
+            self.connection_manager.broadcast("approval_required", {
+                "approval_id": approval.id,
+                "task_id": task_id,
+                "tool_name": tool_name,
+                "arguments": arguments,
+                "reason": reason,
+                "status": approval.status,
+                "created_at": str(approval.created_at)
+            })
 
         return approval
 
@@ -90,6 +105,11 @@ class ApprovalService:
 
                 if time.time() - start_time >= timeout:
                     self.repo.update_status(approval_id, ApprovalStatus.EXPIRED)
+                    if self.connection_manager:
+                        self.connection_manager.broadcast("approval_resolved", {
+                            "approval_id": approval_id,
+                            "status": ApprovalStatus.EXPIRED.value
+                        })
                     return False
 
                 active.event.wait(timeout=poll_interval)
@@ -108,6 +128,12 @@ class ApprovalService:
 
         new_status = ApprovalStatus.APPROVED if approved else ApprovalStatus.DENIED
         self.repo.update_status(approval_id, new_status)
+
+        if self.connection_manager:
+            self.connection_manager.broadcast("approval_resolved", {
+                "approval_id": approval_id,
+                "status": new_status.value
+            })
 
         with self._lock:
             active = self._active.get(approval_id)
