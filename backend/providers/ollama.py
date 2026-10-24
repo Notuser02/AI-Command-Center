@@ -7,6 +7,18 @@ class OllamaProvider:
         self.model = model
         self.base_url = "http://localhost:11434"
 
+    @classmethod
+    def list_models(cls, base_url="http://localhost:11434"):
+        """Query Ollama API for all installed models on this PC."""
+        try:
+            resp = requests.get(f"{base_url}/api/tags", timeout=3.0)
+            if resp.status_code == 200:
+                data = resp.json()
+                return [m["name"] for m in data.get("models", [])]
+        except Exception:
+            pass
+        return ["qwen3.5:9b"]
+
     def generate(self, prompt):
         """Simple prompt → text. Used by the /chat endpoint."""
         response = requests.post(
@@ -56,6 +68,25 @@ class OllamaProvider:
         )
 
         result = response.json()
+
+        # If Ollama returns an error (e.g. model does not support tools)
+        if response.status_code != 200:
+            err_text = result.get("error", "")
+            if "does not support tools" in err_text and "tools" in payload:
+                payload.pop("tools", None)
+                payload.pop("think", None)
+                retry_response = requests.post(
+                    f"{self.base_url}/api/chat",
+                    json=payload
+                )
+                retry_result = retry_response.json()
+                if retry_response.status_code == 200 and "message" in retry_result:
+                    return retry_result["message"]
+                raise RuntimeError(f"Ollama error on fallback: {retry_result.get('error', retry_response.text)}")
+            raise RuntimeError(f"Ollama error: {err_text or response.text}")
+
+        if "message" not in result:
+            raise RuntimeError(f"Ollama response missing 'message': {result}")
 
         return result["message"]
 

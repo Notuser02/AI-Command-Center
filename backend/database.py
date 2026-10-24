@@ -27,6 +27,7 @@ def init_db():
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 task TEXT NOT NULL,
                 provider TEXT NOT NULL DEFAULT 'local',
+                model TEXT DEFAULT 'qwen3.5:9b',
                 status TEXT NOT NULL DEFAULT 'pending',
                 created_at TIMESTAMP NOT NULL,
                 updated_at TIMESTAMP NOT NULL,
@@ -35,11 +36,13 @@ def init_db():
                 messages TEXT
             )
         """)
-        # Ensure 'messages' column exists for existing tables
+        # Ensure 'messages' and 'model' columns exist for existing tables
         cursor = conn.execute("PRAGMA table_info(tasks)")
         cols = [r["name"] for r in cursor.fetchall()]
         if "messages" not in cols:
             conn.execute("ALTER TABLE tasks ADD COLUMN messages TEXT")
+        if "model" not in cols:
+            conn.execute("ALTER TABLE tasks ADD COLUMN model TEXT DEFAULT 'qwen3.5:9b'")
 
         conn.execute("""
             CREATE TABLE IF NOT EXISTS approvals (
@@ -60,10 +63,11 @@ class Task:
     def __init__(self, id: int, task: str, provider: str, status: str,
                  created_at: datetime, updated_at: datetime,
                  result: Optional[str] = None, logs: Optional[str] = None,
-                 messages: Optional[str] = None):
+                 messages: Optional[str] = None, model: Optional[str] = "qwen3.5:9b"):
         self.id = id
         self.task = task
         self.provider = provider
+        self.model = model or "qwen3.5:9b"
         self.status = status
         self.created_at = created_at
         self.updated_at = updated_at
@@ -78,6 +82,7 @@ class TaskRepository:
 
     def _row_to_task(self, row: sqlite3.Row) -> Task:
         messages = row["messages"] if "messages" in row.keys() else None
+        model = row["model"] if "model" in row.keys() else "qwen3.5:9b"
         return Task(
             id=row["id"],
             task=row["task"],
@@ -87,10 +92,11 @@ class TaskRepository:
             updated_at=datetime.fromisoformat(row["updated_at"]),
             result=row["result"],
             logs=row["logs"],
-            messages=messages
+            messages=messages,
+            model=model
         )
 
-    def create(self, task: str, provider: str = "local") -> Task:
+    def create(self, task: str, provider: str = "local", model: str = "qwen3.5:9b") -> Task:
         now = datetime.now(timezone.utc).isoformat()
         initial_messages = []
         if task and task.strip():
@@ -102,9 +108,9 @@ class TaskRepository:
         messages_json = json.dumps(initial_messages)
         with get_db() as conn:
             cursor = conn.execute(
-                """INSERT INTO tasks (task, provider, status, created_at, updated_at, messages)
-                   VALUES (?, ?, ?, ?, ?, ?)""",
-                (task, provider, TaskStatus.PENDING.value, now, now, messages_json)
+                """INSERT INTO tasks (task, provider, model, status, created_at, updated_at, messages)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (task, provider, model or "qwen3.5:9b", TaskStatus.PENDING.value, now, now, messages_json)
             )
             conn.commit()
             task_id = cursor.lastrowid

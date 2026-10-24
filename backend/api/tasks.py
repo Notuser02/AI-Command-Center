@@ -38,6 +38,7 @@ def _task_to_response(task) -> TaskResponse:
         id=task.id,
         task=task.task,
         provider=task.provider,
+        model=getattr(task, "model", "qwen3.5:9b"),
         status=TaskStatus(task.status),
         created_at=task.created_at,
         updated_at=task.updated_at,
@@ -50,7 +51,7 @@ def _task_to_response(task) -> TaskResponse:
 @router.post("/tasks", response_model=TaskResponse)
 def create_task(task_in: TaskCreate):
     repo = TaskRepository()
-    task = repo.create(task_in.task, task_in.provider)
+    task = repo.create(task_in.task, task_in.provider, model=task_in.model)
     resp = _task_to_response(task)
     if task_service and task_service.connection_manager:
         task_service.connection_manager.broadcast("task_created", resp.model_dump())

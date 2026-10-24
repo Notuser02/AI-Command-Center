@@ -29,10 +29,10 @@ def init(registry: ToolRegistry):
 
 
 @router.post("/agent/run")
-def run_agent(task: str, provider: str = "local"):
+def run_agent(task: str, provider: str = "local", model: str = "qwen3.5:9b"):
 
     if provider == "local":
-        selected_provider = ollama
+        selected_provider = OllamaProvider(model=model)
 
     elif provider == "online":
         selected_provider = nebius
@@ -46,6 +46,7 @@ def run_agent(task: str, provider: str = "local"):
 
     return {
         "provider": provider,
+        "model": model,
         "status": agent.status,
         "result": result,
         "logs": agent.logs

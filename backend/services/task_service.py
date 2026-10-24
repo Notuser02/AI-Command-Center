@@ -44,9 +44,9 @@ class TaskService:
     def set_connection_manager(self, manager):
         self.connection_manager = manager
 
-    def _get_provider(self, provider_name: str):
+    def _get_provider(self, provider_name: str, model: Optional[str] = None):
         if provider_name == "local":
-            return OllamaProvider()
+            return OllamaProvider(model=model or "qwen3.5:9b")
         elif provider_name == "online":
             return NebiusProvider()
         else:
@@ -119,7 +119,7 @@ class TaskService:
                 "status": TaskStatus.RUNNING.value
             })
 
-        provider = self._get_provider(task.provider)
+        provider = self._get_provider(task.provider, model=getattr(task, "model", None))
         agent = Agent(
             provider,
             tool_registry=self.tool_registry,
@@ -163,7 +163,7 @@ class TaskService:
                 "status": TaskStatus.RUNNING.value
             })
 
-        provider = self._get_provider(task.provider)
+        provider = self._get_provider(task.provider, model=getattr(task, "model", None))
         agent = Agent(
             provider,
             tool_registry=self.tool_registry,

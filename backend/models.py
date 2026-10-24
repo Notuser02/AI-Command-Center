@@ -16,6 +16,7 @@ class TaskStatus(str, Enum):
 class TaskCreate(BaseModel):
     task: str
     provider: str = "local"
+    model: Optional[str] = "qwen3.5:9b"
 
 
 class MessageCreate(BaseModel):
@@ -26,6 +27,7 @@ class TaskResponse(BaseModel):
     id: int
     task: str
     provider: str
+    model: Optional[str] = "qwen3.5:9b"
     status: TaskStatus
     created_at: datetime
     updated_at: datetime

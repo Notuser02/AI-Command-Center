@@ -626,12 +626,20 @@
         <label style="display: block; margin-bottom: 6px; font-size: 12px; color: var(--text-main);">Task Objective / First Instruction:</label>
         <textarea id="modalTaskInput" class="message-input" style="width: 100%; min-height: 80px;" placeholder="e.g. 'Analyze project architecture and inspect files' or 'Run tests and report status'"></textarea>
       </div>
-      <div>
-        <label style="display: block; margin-bottom: 6px; font-size: 12px; color: var(--text-main);">AI Provider:</label>
-        <select id="modalProviderSelect" class="message-input" style="width: 100%;">
-          <option value="local">Local — Qwen 3.5 9B (Ollama)</option>
-          <option value="online">Online — Nebius AI Cloud (NVIDIA model)</option>
-        </select>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+        <div>
+          <label style="display: block; margin-bottom: 6px; font-size: 12px; color: var(--text-main);">AI Provider:</label>
+          <select id="modalProviderSelect" class="message-input" style="width: 100%;">
+            <option value="local">Local (Ollama)</option>
+            <option value="online">Online (Nebius Cloud)</option>
+          </select>
+        </div>
+        <div>
+          <label style="display: block; margin-bottom: 6px; font-size: 12px; color: var(--text-main);">Model:</label>
+          <select id="modalModelSelect" class="message-input" style="width: 100%;">
+            <option value="qwen3.5:9b">qwen3.5:9b</option>
+          </select>
+        </div>
       </div>
       <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 8px;">
         <button id="btnCancelModal" class="btn-action">Cancel</button>
@@ -674,6 +682,35 @@
     const btnConfirmCreateTask = document.getElementById('btnConfirmCreateTask');
     const modalTaskInput = document.getElementById('modalTaskInput');
     const modalProviderSelect = document.getElementById('modalProviderSelect');
+    const modalModelSelect = document.getElementById('modalModelSelect');
+
+    let availableModels = { local: ['qwen3.5:9b'], online: [] };
+
+    async function loadModels() {
+      try {
+        const res = await fetch(`${HTTP_BASE}/models`);
+        if (res.ok) {
+          availableModels = await res.json();
+          updateModelDropdown();
+        }
+      } catch (e) {
+        console.error('Failed to load models:', e);
+      }
+    }
+
+    function updateModelDropdown() {
+      const provider = modalProviderSelect.value;
+      const list = (provider === 'local') ? (availableModels.local || []) : (availableModels.online || []);
+      modalModelSelect.innerHTML = '';
+      list.forEach(m => {
+        const opt = document.createElement('option');
+        opt.value = m;
+        opt.textContent = m;
+        modalModelSelect.appendChild(opt);
+      });
+    }
+
+    modalProviderSelect.addEventListener('change', updateModelDropdown);
 
     // Clock
     function updateClock() {
@@ -772,13 +809,14 @@
       }
 
       const provider = modalProviderSelect.value;
+      const model = modalModelSelect.value;
       btnConfirmCreateTask.disabled = true;
 
       try {
         const res = await fetch(`${HTTP_BASE}/tasks`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ task: text, provider: provider })
+          body: JSON.stringify({ task: text, provider: provider, model: model })
         });
 
         if (!res.ok) throw new Error('Failed to create task');
@@ -831,7 +869,7 @@
           </div>
           <div class="task-card-title">${escapeHtml(t.task)}</div>
           <div class="task-card-meta">
-            <span>${t.provider}</span>
+            <span>${t.provider} · <strong style="color:var(--neon-cyan)">${t.model || 'qwen3.5:9b'}</strong></span>
             <span>${msgCount}</span>
           </div>
         `;
@@ -876,7 +914,9 @@
 
       activeTaskIdBadge.textContent = `#TASK-${task.id}`;
       activeTaskIdBadge.className = `badge badge-${task.status.toLowerCase()}`;
-      activeTaskTitle.textContent = task.task;
+      activeTaskTitle.textContent = `${task.task} [${task.model || 'qwen3.5:9b'}]`;
+      const modelEl = document.getElementById('modelName');
+      if (modelEl) modelEl.textContent = task.model || 'qwen3.5:9b';
     }
 
     function renderTaskConversation(task) {
@@ -1050,6 +1090,7 @@
     }
 
     // Init
+    loadModels();
     connectWebSocket();
     loadTasks();
     checkPendingApprovals();
