@@ -17,6 +17,7 @@ import os
 import asyncio
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from database import init_db, TaskRepository
 from agent.tools import ToolRegistry
 from services.task_service import TaskService
@@ -45,6 +46,15 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="AI Command Center", lifespan=lifespan)
+
+# CORS: the mobile app (React Native) doesn't need it, but Expo's web mode
+# and browser-based debugging do — a LAN-served dev tool, so allow all origins.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # ── Tool security: the agent can ONLY access files inside this directory ──
 PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))

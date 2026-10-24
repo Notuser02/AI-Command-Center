@@ -61,6 +61,41 @@ Open **http://127.0.0.1:8000** and create your first task workspace.
 > Tip: set `NEBIUS_API_KEY` in `backend/.env` if you ever want to experiment with an
 > online provider — the local (Ollama) path needs nothing but Ollama itself.
 
+## Mobile app (React Native + Expo)
+
+A companion app lives in `mobile/` — control and monitor your agents from your
+phone over Wi-Fi: dashboard with live activity, streaming chat with your local
+models, task management (create / stop / finish / delete), approval decisions,
+and configurable server address.
+
+**One-time setup on the PC:**
+
+```powershell
+# 1. Run the backend where the phone can reach it (not just localhost):
+cd backend
+.\venv\Scripts\uvicorn.exe main:app --host 0.0.0.0 --port 8000
+
+# 2. Let it through Windows Firewall (admin PowerShell, one-time):
+netsh advfirewall firewall add rule name="AI Command Center" dir=in action=allow protocol=TCP localport=8000
+
+# 3. Find your PC's Wi-Fi IP (the phone needs this, never 'localhost'):
+ipconfig        # → IPv4 Address, e.g. 192.168.1.42
+```
+
+**On the phone:**
+
+```powershell
+cd mobile
+npx expo start          # scan the QR code with the Expo Go app
+```
+
+Then in the app: **Settings → PC Server Address** → `http://<your-PC-IP>:8000`
+and hit *Test Connection*. Phone and PC must be on the same Wi-Fi. (If the
+network blocks device-to-PC traffic, `npx expo start --tunnel`.)
+
+The app reuses the backend's existing REST + WebSocket APIs — nothing extra to
+run. If the live stream can't connect, it falls back to 5-second polling.
+
 ## How the agent works
 
 Under the hood it's a ReAct loop: the model sees your message (plus the workspace
