@@ -9,3 +9,6 @@ venv/
 # Local data & secrets
 *.db
 .env
+
+# Personal machine config — each user creates their own
+backend/allowed_dirs.txt

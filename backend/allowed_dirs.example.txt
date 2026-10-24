@@ -1,8 +1,14 @@
 # Extra directories the AI agent is allowed to access.
 # One absolute path per line. Lines starting with # are comments.
 #
-# The backend/ project folder is ALWAYS allowed — it does not need to be
-# listed here.
+# SETUP: copy this file to allowed_dirs.txt (same folder) and list the
+# folders YOU want the agent to reach, e.g.:
+#
+#   C:/Users/yourname/Desktop
+#   D:/Projects
+#
+# Without an allowed_dirs.txt, the agent can only access the backend/
+# project folder itself — a safe default.
 #
 # Changes take effect after restarting the backend
 # (close the "AI Command Center Backend" window and double-click the
@@ -10,5 +16,3 @@
 #
 # Remember: write_file and run_command still require your approval
 # everywhere, and .env-style secret files stay blocked everywhere.
-
-C:/Users/salla/OneDrive/Desktop

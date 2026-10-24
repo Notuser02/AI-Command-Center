@@ -20,9 +20,35 @@
 
 ## 🚀 Quick Start
 
-Double-click **`Start AI Command Center.bat`**. That's it — the launcher starts Ollama (CLI server) and the backend in visible console windows, waits until both are ready, and opens the dashboard in your browser.
+**What you need first (once):**
 
-Prefer doing it by hand?
+- **Windows 10/11** with [Python 3.10+](https://python.org) (tick *"Add python.exe to PATH"* in its installer)
+- **[Ollama](https://ollama.com)** installed, with at least one model — `ollama pull qwen3.5:9b` works great (any model you like is fine)
+- Optional: **[Node.js 18+](https://nodejs.org)** — only if you want the phone app
+- Optional: **[Tailscale](https://tailscale.com)** — if you want phone access away from home
+
+**Setup (once):**
+
+```powershell
+git clone https://github.com/Notuser02/AI-Command-Center.git
+cd AI-Command-Center\backend
+python -m venv venv
+.\venv\Scripts\pip install -r requirements.txt
+```
+
+Optional extras:
+
+- **Let the agent reach more folders** (by default it only sees the `backend/` folder):
+  copy `backend\allowed_dirs.example.txt` → `backend\allowed_dirs.txt` and list your folders, one per line
+- **Use an online provider** instead of local models: create `backend\.env` containing `ONLINE_API_KEY=...`
+
+**Run it (every time):**
+
+> Double-click **`Start AI Command Center.bat`** in the repo root. It starts Ollama and the
+> backend in visible console windows, waits until both are ready, and opens the dashboard
+> in your browser. Running it again while it's up just opens the dashboard.
+
+Or manually, in two terminals:
 
 ```powershell
 ollama serve                                                   # terminal 1 — model server
@@ -31,15 +57,32 @@ cd backend
 # → open http://127.0.0.1:8000
 ```
 
-First time on this machine? Install Python 3.10+ and [Ollama](https://ollama.com) with at least one model (`ollama pull qwen3.5:9b`), then:
+**Stop:** close the *"AI Command Center Backend"* and *"Ollama Server"* console windows.
+
+**Phone app (build once, then install from your browser):**
 
 ```powershell
-cd backend
-python -m venv venv
-.\venv\Scripts\pip install -r requirements.txt
+cd mobile
+npm install
+npm run export:web          # builds the app into the backend
+
+# one-time, admin PowerShell — let phones reach port 8000:
+netsh advfirewall firewall add rule name="AI Command Center" dir=in action=allow protocol=TCP localport=8000
+
+ipconfig                     # note your PC's IPv4 (Wi-Fi adapter)
 ```
 
-> Tip: set `ONLINE_API_KEY` in `backend/.env` to use an online provider — the local (Ollama) path needs nothing but Ollama itself.
+Then on the phone (same Wi-Fi): open **`http://<your-PC-IP>:8000/m`** in Chrome →
+menu (⋮) → **Install app**. Away from home, see [Remote Access](#-remote-access-tailscale) below.
+
+**Troubleshooting**
+
+| Symptom | Check |
+|---|---|
+| Agents don't answer | Is the *Ollama Server* window running? (`ollama serve`) |
+| Page won't open | Is the *AI Command Center Backend* window running? |
+| Phone can't connect | Same Wi-Fi (or Tailscale ON)? Firewall rule added? Backend window open? |
+| Port 8000 already in use | An old backend window is still open — close it first |
 
 ---
 
@@ -97,7 +140,7 @@ Works over mobile data, campus Wi-Fi, anywhere. ⚠️ Don't expose the backend 
 
 Three layers, all enforced server-side:
 
-1. **Path sandbox:** every file path is validated against an allowlist (`backend/allowed_dirs.txt` — one folder per line, Desktop included by default) before anything touches disk. `..\` tricks and outside paths are refused.
+1. **Path sandbox:** every file path is validated against an allowlist (`backend/allowed_dirs.txt` — one folder per line, see `allowed_dirs.example.txt`; by default only the project folder itself) before anything touches disk. `..\` tricks and outside paths are refused.
 2. **Secrets blocked:** `.env`-style files can't be read *or* written by the agent — anywhere.
 3. **Human-in-the-loop:** `write_file` and `run_command` pause execution and wait for Approve/Deny — from the dashboard, the phone, or the API. No approval, no execution.
 

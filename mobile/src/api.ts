@@ -3,10 +3,11 @@
 import type { Approval, ModelsResponse, Task } from './types';
 
 // The phone must reach the PC over the network — never 'localhost', which
-// would mean the phone itself. Default is the PC's Tailscale address
-// (works on any network, home or away, while Tailscale is ON); change it
-// anytime in the Settings screen (stored in AsyncStorage).
-export const DEFAULT_SERVER_URL = 'http://100.118.150.53:8000';
+// would mean the phone itself. This is only a FIRST-RUN default; each user
+// sets their own PC address (LAN IP or Tailscale 100.x) in the Settings
+// screen, which persists. The web app served by the backend at /m ignores
+// this entirely and auto-detects its server.
+export const DEFAULT_SERVER_URL = 'http://192.168.1.100:8000';
 
 let baseUrl = DEFAULT_SERVER_URL;
 
