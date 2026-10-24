@@ -58,6 +58,11 @@ python -m venv venv
 
 Open **http://127.0.0.1:8000** and create your first task workspace.
 
+> **Lazy?** Double-click **`Start AI Command Center.bat`** in the repo root.
+> It starts the backend (in a visible console window), waits until it's up,
+> opens the dashboard in your browser, and offers to start the mobile app
+> server too. Running it again while the backend is up just opens the dashboard.
+
 > Tip: set `NEBIUS_API_KEY` in `backend/.env` if you ever want to experiment with an
 > online provider — the local (Ollama) path needs nothing but Ollama itself.
 
