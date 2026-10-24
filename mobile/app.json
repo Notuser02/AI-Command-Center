@@ -11,6 +11,7 @@
       "supportsTablet": true
     },
     "android": {
+      "package": "com.siddhanth.aicommandcenter",
       "adaptiveIcon": {
         "backgroundColor": "#070a0f",
         "foregroundImage": "./assets/android-icon-foreground.png",

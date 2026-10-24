@@ -2,10 +2,11 @@
 
 import type { Approval, ModelsResponse, Task } from './types';
 
-// The phone must reach the PC over Wi-Fi — never 'localhost', which would
-// mean the phone itself. The default here is this PC's LAN address; change
-// it in the Settings screen (stored in AsyncStorage).
-export const DEFAULT_SERVER_URL = 'http://10.3.39.142:8000';
+// The phone must reach the PC over the network — never 'localhost', which
+// would mean the phone itself. Default is the PC's Tailscale address
+// (works on any network, home or away, while Tailscale is ON); change it
+// anytime in the Settings screen (stored in AsyncStorage).
+export const DEFAULT_SERVER_URL = 'http://100.118.150.53:8000';
 
 let baseUrl = DEFAULT_SERVER_URL;
 

@@ -81,11 +81,13 @@ In the app: **Settings → PC Server Address** → `http://<your-PC-IP>:8000` �
 
 ## 🌍 Remote Access (Tailscale)
 
-Wi-Fi is for home. For anywhere-access, use [Tailscale](https://tailscale.com) (free) — a private encrypted network between *your* devices only. The public internet sees nothing, so the backend needs no passwords; the network itself is the lock.
+Wi-Fi is for home. For anywhere-access, use [Tailscale](https://tailscale.com) (free) — a private encrypted network between *your* devices only. The public internet sees nothing, so the backend needs no passwords; the network itself is lock and key.
 
 1. **PC:** install Tailscale (`winget install Tailscale.Tailscale`) and sign in
 2. **Phone:** install the Tailscale app, sign in with the **same account**, toggle it ON
-3. **In the app:** Server Address → `http://<100.x.y.z>:8000` (get the IP from `tailscale ip -4` on the PC)
+3. **On the phone:** open `https://<your-pc>.ts.net/m` and Chrome's menu → **Install app** — the mobile app installs as a real PWA (icon, full-screen, auto-updating)
+   - the HTTPS address comes from `tailscale serve` on the PC: `tailscale serve --bg http://127.0.0.1:8000`
+   - without HTTPS, `http://<100.x.y.z>:8000/m` works too (Add to Home screen)
 
 Works over mobile data, campus Wi-Fi, anywhere. ⚠️ Don't expose the backend with port-forwarding or public tunnels instead — it has no authentication layer by design, because only your tailnet can reach it.
 

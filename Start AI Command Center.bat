@@ -98,6 +98,9 @@ if exist "%ProgramFiles%\Tailscale\tailscale.exe" (
     for /f "delims=" %%i in ('"%ProgramFiles%\Tailscale\tailscale.exe" ip -4 2^>nul') do (
         echo  From ANYWHERE via Tailscale : http://%%i:8000
     )
+    "%ProgramFiles%\Tailscale\tailscale.exe" serve status 2>nul | findstr /i "https://" >nul && (
+        echo  Phone app install URL      : https://salla.tail060f5a.ts.net/m
+    )
 )
 echo --------------------------------------------
 echo  To STOP everything, close these console windows:
