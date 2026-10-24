@@ -172,6 +172,17 @@ export default function ChatScreen() {
       </View>
 
       <ScrollView ref={scrollRef} style={styles.stream} contentContainerStyle={{ padding: 12 }}>
+        {/* Welcome state — the AI Agent Workspace branding, like the PC home screen */}
+        {(task?.messages?.length ?? 0) === 0 && !running && (
+          <View style={styles.emptyWrap}>
+            <Text style={styles.emptyTitle}>[ AI AGENT WORKSPACE ]</Text>
+            <Text style={styles.emptySub}>
+              Chat with your PC's local models — responses stream live and your
+              history is kept on the PC.
+            </Text>
+            <Text style={styles.emptyHint}>Pick a model above · send the first message below</Text>
+          </View>
+        )}
         {(task?.messages || []).map((m, i) => (
           <MessageBubble key={i} message={m} />
         ))}
@@ -240,6 +251,10 @@ const styles = StyleSheet.create({
   newChat: { paddingHorizontal: 8, paddingVertical: 4 },
   newChatText: { color: colors.cyan, fontSize: 12, fontWeight: '700' },
   stream: { flex: 1, backgroundColor: '#05070a' },
+  emptyWrap: { alignItems: 'center', gap: 10, paddingVertical: 60, paddingHorizontal: 20 },
+  emptyTitle: { color: colors.cyan, fontSize: 18, fontWeight: '700', textAlign: 'center' },
+  emptySub: { color: colors.text, fontSize: 13, textAlign: 'center', lineHeight: 19 },
+  emptyHint: { color: colors.dim, fontSize: 11, textAlign: 'center' },
   rowCenter: { flexDirection: 'row', alignItems: 'center' },
   dim: { color: colors.dim, fontSize: 12 },
   errorBar: { color: colors.red, fontSize: 11, paddingHorizontal: 14, paddingVertical: 4 },
