@@ -7,21 +7,54 @@ echo   AI COMMAND CENTER - STARTING UP
 echo ============================================
 echo.
 
+REM ── Start Ollama if it isn't running ──
+%SystemRoot%\System32\curl.exe -s -o nul -m 2 http://localhost:11434/api/tags
+if %errorlevel%==0 goto :ollama_ready
+
+set "OLLAMA_EXE="
+for /f "delims=" %%i in ('where ollama 2^>nul') do (
+    if not defined OLLAMA_EXE set "OLLAMA_EXE=%%~fi"
+)
+
+if not defined OLLAMA_EXE (
+    echo [!] Ollama is not installed on this PC - continuing without it.
+    echo [!] Install it from https://ollama.com so agents can answer.
+    echo.
+    goto :backend
+)
+
+set "OLLAMA_DIR="
+for %%d in ("%OLLAMA_EXE%") do set "OLLAMA_DIR=%%~dpd"
+
+echo Starting Ollama...
+if exist "%OLLAMA_DIR%ollama app.exe" (
+    start "" "%OLLAMA_DIR%ollama app.exe"
+) else (
+    start "Ollama Server" /min cmd /c ""%OLLAMA_EXE%" serve"
+)
+
+echo Waiting for Ollama to respond...
+set /a otries=0
+:ollamawait
+%SystemRoot%\System32\timeout.exe /t 1 /nobreak >nul
+%SystemRoot%\System32\curl.exe -s -o nul -m 2 http://localhost:11434/api/tags
+if %errorlevel%==0 goto :ollama_ready
+set /a otries+=1
+if %otries% lss 45 goto :ollamawait
+echo [!] Ollama did not respond within 45 seconds - continuing anyway.
+echo.
+goto :backend
+
+:ollama_ready
+echo Ollama is running.
+
+:backend
 REM ── If the backend is already running, just open the dashboard ──
 %SystemRoot%\System32\curl.exe -s -o nul -m 2 http://127.0.0.1:8000/status
 if %errorlevel%==0 (
     echo Backend is already running - opening the dashboard...
     start "" http://127.0.0.1:8000/
     goto :phone_hint
-)
-
-REM ── Warn (but continue) if Ollama is not running ──
-%SystemRoot%\System32\curl.exe -s -o nul -m 2 http://localhost:11434/api/tags
-if not %errorlevel%==0 (
-    echo [!] Ollama does not seem to be running.
-    echo [!] The dashboard will start, but agents cannot answer
-    echo [!] until you start Ollama. Agents will recover once it is up.
-    echo.
 )
 
 if not exist "backend\venv\Scripts\uvicorn.exe" (
