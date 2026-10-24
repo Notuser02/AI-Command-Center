@@ -110,6 +110,11 @@ export default function SettingsScreen() {
           </Text>
           {'\n'}3. Phone and PC must be on the same Wi-Fi network.
         </Text>
+        <Text style={[styles.hint, { marginTop: 8 }]}>
+          Away from home? Install Tailscale (free) on the PC and phone, sign in
+          with the same account on both, keep it ON — then use the PC's Tailscale
+          address here (starts with 100.). It works from any network.
+        </Text>
       </View>
     </ScrollView>
   );

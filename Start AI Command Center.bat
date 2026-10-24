@@ -94,6 +94,11 @@ echo  Phone app : same Wi-Fi, then in app Settings use:
 for /f "tokens=2 delims=:" %%a in ('ipconfig ^| findstr /c:"IPv4" ^| findstr /v "192.168.56."') do (
     for /f "tokens=* delims= " %%b in ("%%a") do echo               http://%%b:8000
 )
+if exist "%ProgramFiles%\Tailscale\tailscale.exe" (
+    for /f "delims=" %%i in ('"%ProgramFiles%\Tailscale\tailscale.exe" ip -4 2^>nul') do (
+        echo  From ANYWHERE via Tailscale : http://%%i:8000
+    )
+)
 echo --------------------------------------------
 echo  To STOP everything, close these console windows:
 echo    - "AI Command Center Backend"
