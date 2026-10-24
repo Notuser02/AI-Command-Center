@@ -63,7 +63,7 @@ Open **http://127.0.0.1:8000** and create your first task workspace.
 > opens the dashboard in your browser, and offers to start the mobile app
 > server too. Running it again while the backend is up just opens the dashboard.
 
-> Tip: set `NEBIUS_API_KEY` in `backend/.env` if you ever want to experiment with an
+> Tip: set `ONLINE_API_KEY` in `backend/.env` if you ever want to experiment with an
 > online provider — the local (Ollama) path needs nothing but Ollama itself.
 
 ## Mobile app (React Native + Expo)
