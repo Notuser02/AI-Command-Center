@@ -56,9 +56,26 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ── Tool security: the agent can ONLY access files inside this directory ──
+# ── Tool security: the agent can ONLY access files inside these directories ──
+# The backend folder itself is always allowed; extra folders (e.g. the
+# Desktop) come from allowed_dirs.txt — one absolute path per line.
 PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
-tool_registry = ToolRegistry(allowed_dirs=[PROJECT_DIR])
+
+
+def _load_extra_allowed_dirs():
+    """Read user-configured extra sandbox folders from allowed_dirs.txt."""
+    config_path = os.path.join(PROJECT_DIR, "allowed_dirs.txt")
+    dirs = []
+    if os.path.exists(config_path):
+        with open(config_path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#"):
+                    dirs.append(os.path.abspath(line))
+    return dirs
+
+
+tool_registry = ToolRegistry(allowed_dirs=[PROJECT_DIR] + _load_extra_allowed_dirs())
 
 # ── Initialize services ──
 connection_manager = ConnectionManager()

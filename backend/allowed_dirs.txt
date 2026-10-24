@@ -1,0 +1,14 @@
+# Extra directories the AI agent is allowed to access.
+# One absolute path per line. Lines starting with # are comments.
+#
+# The backend/ project folder is ALWAYS allowed — it does not need to be
+# listed here.
+#
+# Changes take effect after restarting the backend
+# (close the "AI Command Center Backend" window and double-click the
+#  launcher again).
+#
+# Remember: write_file and run_command still require your approval
+# everywhere, and .env-style secret files stay blocked everywhere.
+
+C:/Users/salla/OneDrive/Desktop

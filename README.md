@@ -111,11 +111,15 @@ at 10 rounds so it can't spiral.
 The safety model has three layers:
 
 1. **Sandbox** — every file path is validated against an allowlist before anything
-   touches disk. `..\` tricks and paths outside the project are refused.
-2. **Secrets blocked** — `.env` and friends can't be read *or* written by the agent.
-3. **Human-in-the-loop** — `write_file` and `run_command` pause execution and wait for
-   you to click Approve or Deny (in the dashboard or via the API). No approval, no
-   execution.
+   touches disk. `..\` tricks and paths outside the allowlist are refused.
+   The allowlist is configurable: `backend/allowed_dirs.txt` lists extra folders
+   the agent may access (one absolute path per line — e.g. your Desktop).
+   Restart the backend after editing it.
+2. **Secrets blocked** — `.env` and similar secret files can't be read *or*
+   written by the agent, in any allowed folder.
+3. **Human-in-the-loop** — `write_file` and `run_command` pause execution and
+   wait for you to click Approve or Deny (in the dashboard, mobile app, or via
+   the API). No approval, no execution.
 
 ## API quick reference
 
