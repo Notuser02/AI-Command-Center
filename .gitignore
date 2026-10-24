@@ -1,0 +1,11 @@
+# ZCode session artifacts
+.zcode/
+
+# Python
+__pycache__/
+venv/
+*.pyc
+
+# Local data & secrets
+*.db
+.env
