@@ -23,15 +23,8 @@ if not defined OLLAMA_EXE (
     goto :backend
 )
 
-set "OLLAMA_DIR="
-for %%d in ("%OLLAMA_EXE%") do set "OLLAMA_DIR=%%~dpd"
-
-echo Starting Ollama...
-if exist "%OLLAMA_DIR%ollama app.exe" (
-    start "" "%OLLAMA_DIR%ollama app.exe"
-) else (
-    start "Ollama Server" /min cmd /c ""%OLLAMA_EXE%" serve"
-)
+echo Starting Ollama (server on the CLI)...
+start "Ollama Server" cmd /k ""%OLLAMA_EXE%" serve"
 
 echo Waiting for Ollama to respond...
 set /a otries=0
@@ -100,8 +93,9 @@ for /f "tokens=2 delims=:" %%a in ('ipconfig ^| findstr /c:"IPv4" ^| findstr /v 
     for /f "tokens=* delims= " %%b in ("%%a") do echo               http://%%b:8000
 )
 echo --------------------------------------------
-echo  To STOP the backend, close the
-echo  "AI Command Center Backend" window.
+echo  To STOP everything, close these console windows:
+echo    - "AI Command Center Backend"
+echo    - "Ollama Server"
 echo.
 echo This launcher window will close in a few seconds...
 %SystemRoot%\System32\timeout.exe /t 6 >nul
