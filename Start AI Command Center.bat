@@ -79,7 +79,9 @@ start "" http://127.0.0.1:8000/
 
 REM ── Optionally start the mobile app dev server too ──
 echo.
-choice /c yn /t 6 /d n /m "Also start the MOBILE APP server (Expo) for your phone"
+echo The dashboard is opening in your browser.
+echo Come back here to answer:
+choice /c yn /m "Also start the MOBILE APP server (Expo) for your phone"
 if errorlevel 2 goto :phone_hint
 start "AI Command Center Mobile (Expo)" cmd /k "cd /d %~dp0mobile && npx expo start"
 echo Mobile server starting in its own window - scan its QR code with Expo Go.
@@ -98,4 +100,4 @@ echo    - "AI Command Center Backend"
 echo    - "Ollama Server"
 echo.
 echo This launcher window will close in a few seconds...
-%SystemRoot%\System32\timeout.exe /t 6 >nul
+%SystemRoot%\System32\timeout.exe /t 10 >nul
