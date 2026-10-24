@@ -98,24 +98,6 @@ export default function SettingsScreen() {
         </Pressable>
       </View>
 
-      {/* Connection help */}
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>CAN'T CONNECT?</Text>
-        <Text style={styles.hint}>
-          1. Backend must run with:{'\n'}
-          <Text style={styles.code}>uvicorn main:app --host 0.0.0.0 --port 8000</Text>
-          {'\n'}2. Allow it through Windows Firewall (admin PowerShell):{'\n'}
-          <Text style={styles.code}>
-            netsh advfirewall firewall add rule name="AI Command Center" dir=in action=allow protocol=TCP localport=8000
-          </Text>
-          {'\n'}3. Phone and PC must be on the same Wi-Fi network.
-        </Text>
-        <Text style={[styles.hint, { marginTop: 8 }]}>
-          Away from home? Install Tailscale (free) on the PC and phone, sign in
-          with the same account on both, keep it ON — then use the PC's Tailscale
-          address here (starts with 100.). It works from any network.
-        </Text>
-      </View>
     </ScrollView>
   );
 }
