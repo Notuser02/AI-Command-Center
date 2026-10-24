@@ -5,7 +5,7 @@ import { StatusBar } from 'expo-status-bar';
 import { NavigationContainer, DarkTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { Text } from 'react-native';
+import { Pressable, Text } from 'react-native';
 
 import { SettingsProvider } from './src/context/SettingsContext';
 import { LiveProvider } from './src/context/LiveContext';
@@ -88,9 +88,29 @@ export default function App() {
             <Stack.Screen
               name="TaskDetail"
               component={TaskDetailScreen}
-              options={({ route }) => ({ title: `Task #${(route.params as any).id}` })}
+              options={({ route, navigation }) => ({
+                title: `Task #${(route.params as any).id}`,
+                // Native-stack back control doesn't render on web/PWA —
+                // and installed PWAs have no browser back button either.
+                headerLeft: () => (
+                  <Pressable onPress={() => navigation.goBack()} hitSlop={12} style={{ paddingHorizontal: 4 }}>
+                    <Text style={{ color: colors.cyan, fontWeight: '700', fontSize: 15 }}>‹ Back</Text>
+                  </Pressable>
+                ),
+              })}
             />
-            <Stack.Screen name="NewTask" component={NewTaskScreen} options={{ title: 'New Task' }} />
+            <Stack.Screen
+              name="NewTask"
+              component={NewTaskScreen}
+              options={({ navigation }) => ({
+                title: 'New Task',
+                headerLeft: () => (
+                  <Pressable onPress={() => navigation.goBack()} hitSlop={12} style={{ paddingHorizontal: 4 }}>
+                    <Text style={{ color: colors.cyan, fontWeight: '700', fontSize: 15 }}>‹ Back</Text>
+                  </Pressable>
+                ),
+              })}
+            />
           </Stack.Navigator>
         </NavigationContainer>
       </LiveProvider>
