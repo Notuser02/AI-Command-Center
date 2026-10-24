@@ -77,15 +77,6 @@ exit /b 1
 echo Server is up - opening your dashboard in the browser...
 start "" http://127.0.0.1:8000/
 
-REM ── Optionally start the mobile app dev server too ──
-echo.
-echo The dashboard is opening in your browser.
-echo Come back here to answer:
-choice /c yn /m "Also start the MOBILE APP server (Expo) for your phone"
-if errorlevel 2 goto :phone_hint
-start "AI Command Center Mobile (Expo)" cmd /k "cd /d %~dp0mobile && npx expo start"
-echo Mobile server starting in its own window - scan its QR code with Expo Go.
-
 :phone_hint
 echo.
 echo --------------------------------------------
