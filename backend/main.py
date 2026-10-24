@@ -116,3 +116,10 @@ def serve_dashboard():
 @app.get("/dashboard", response_class=FileResponse)
 def serve_dashboard_alias():
     return FileResponse(INDEX_HTML)
+
+
+# ── Mobile web app (Expo export) at /m — phones open it straight in a
+# browser; no Expo Go, no dev server, rides on the same port as the API ──
+MOBILE_DIR = os.path.join(STATIC_DIR, "mobile")
+if os.path.isdir(MOBILE_DIR):
+    app.mount("/m", StaticFiles(directory=MOBILE_DIR, html=True), name="mobile")

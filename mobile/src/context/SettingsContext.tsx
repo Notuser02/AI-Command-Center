@@ -1,8 +1,19 @@
 // Settings: server URL + default provider/model, persisted in AsyncStorage.
 
 import React, { createContext, useContext, useEffect, useState } from 'react';
+import { Platform } from 'react-native';
 import { api, DEFAULT_SERVER_URL, setBaseUrl, wsUrl } from '../api';
 import { loadString, saveString, StorageKeys } from '../storage';
+
+// When running as a web page (served from the backend at /m), the backend
+// is simply wherever this page came from — zero configuration for phones.
+function initialServerUrl(): string {
+  if (Platform.OS === 'web' && typeof window !== 'undefined') {
+    const origin = window.location.origin;
+    if (origin && origin.startsWith('http')) return origin;
+  }
+  return DEFAULT_SERVER_URL;
+}
 
 interface SettingsState {
   serverUrl: string;
@@ -24,7 +35,7 @@ const SettingsContext = createContext<SettingsContextValue | null>(null);
 
 export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<SettingsState>({
-    serverUrl: DEFAULT_SERVER_URL,
+    serverUrl: initialServerUrl(),
     provider: 'local',
     model: 'qwen3.5:9b',
     loaded: false,
@@ -39,7 +50,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         loadString(StorageKeys.model),
       ]);
       const next = {
-        serverUrl: url || DEFAULT_SERVER_URL,
+        serverUrl: url || initialServerUrl(),
         provider: provider || 'local',
         model: model || 'qwen3.5:9b',
         loaded: true,
