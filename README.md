@@ -39,6 +39,8 @@ python -m venv venv
 .\venv\Scripts\pip install -r requirements.txt
 ```
 
+> Tip: set `ONLINE_API_KEY` in `backend/.env` to use an online provider — the local (Ollama) path needs nothing but Ollama itself.
+
 ---
 
 ## ✨ What It Does

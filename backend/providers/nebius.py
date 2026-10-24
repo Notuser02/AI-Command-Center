@@ -8,7 +8,9 @@ load_dotenv()
 class NebiusProvider:
 
     def __init__(self):
-        self.api_key = os.getenv("NEBIUS_API_KEY")
+        # ONLINE_API_KEY is the documented name; NEBIUS_API_KEY kept as a
+        # fallback so older .env files keep working.
+        self.api_key = os.getenv("ONLINE_API_KEY") or os.getenv("NEBIUS_API_KEY")
 
     def generate(self, prompt):
         if not self.api_key:
