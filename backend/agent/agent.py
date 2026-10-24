@@ -16,6 +16,7 @@ and doesn't care whether that goes to Ollama, Nebius, or anything else.
 """
 
 import json
+import inspect
 import threading
 import asyncio
 
@@ -32,11 +33,15 @@ class CancellationError(Exception):
 
 class Agent:
 
-    def __init__(self, provider, tool_registry=None, approval_service=None, task_id=None):
+    def __init__(self, provider, tool_registry=None, approval_service=None,
+                 task_id=None, task_description=None):
         self.provider = provider
         self.tool_registry = tool_registry
         self.approval_service = approval_service
         self.task_id = task_id
+        # Workspace description (from task creation) — shown to the LLM as
+        # context in the system prompt rather than as a user message.
+        self.task_description = task_description
         self.status = "idle"
         self.result = None
         self.logs = []      # step-by-step record of what the agent did
@@ -72,18 +77,32 @@ class Agent:
     def cancel(self):
         """Signal the agent to stop at the next checkpoint."""
         self._cancel_event.set()
+        # If the provider is mid-generation, abort its HTTP stream so the
+        # stop takes effect immediately instead of after the current answer.
+        abort = getattr(self.provider, "abort", None)
+        if callable(abort):
+            try:
+                abort()
+            except Exception:
+                pass
 
     def _check_cancelled(self):
         """Raise CancellationError if cancellation was requested."""
         if self._cancel_event.is_set():
             raise CancellationError("Task cancelled")
 
-    async def run_async(self, task: str, progress_callback=None, history=None):
-        """Run the agent asynchronously in a thread pool with conversation history."""
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, self._run_with_progress, task, progress_callback, history)
+    async def run_async(self, task: str, progress_callback=None, history=None, on_token=None):
+        """Run the agent asynchronously in a thread pool with conversation history.
 
-    def _run_with_progress(self, task, progress_callback, history=None):
+        on_token: optional callback(str) — fires for every streamed text chunk
+        from the LLM, enabling live token-by-token output in the dashboard.
+        """
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(
+            None, self._run_with_progress, task, progress_callback, history, on_token
+        )
+
+    def _run_with_progress(self, task, progress_callback, history=None, on_token=None):
         """Wrapper that calls progress_callback after each round."""
         self.status = "running"
         self.logs = []
@@ -97,7 +116,7 @@ class Agent:
                     progress_callback(self.logs)
                 return self.result
 
-            result = self._run_with_tools(task, progress_callback, history=history)
+            result = self._run_with_tools(task, progress_callback, history=history, on_token=on_token)
             self.status = "completed"
             if progress_callback:
                 progress_callback(self.logs)
@@ -117,7 +136,25 @@ class Agent:
                 progress_callback(self.logs)
             raise
 
-    def _run_with_tools(self, task, progress_callback=None, history=None):
+    def _call_provider(self, messages, tools, on_token):
+        """
+        Provider-agnostic LLM call.
+
+        If the provider supports streaming (an `on_token` parameter on its
+        chat method) and a token callback was given, use it — the user sees
+        tokens live. Otherwise fall back to a plain call, so providers
+        without streaming (e.g. the Nebius stub) keep working unchanged.
+        """
+        if on_token is not None:
+            try:
+                params = inspect.signature(self.provider.chat).parameters
+                if "on_token" in params:
+                    return self.provider.chat(messages, tools=tools, on_token=on_token)
+            except (ValueError, TypeError):
+                pass  # signature not inspectable — plain call
+        return self.provider.chat(messages, tools=tools)
+
+    def _run_with_tools(self, task, progress_callback=None, history=None, on_token=None):
         """
         The multi-step tool-calling loop with conversation history.
         """
@@ -141,8 +178,17 @@ class Agent:
             # Check for cancellation at the start of each round
             self._check_cancelled()
 
-            # Ask the LLM
-            response = self.provider.chat(messages, tools=tool_definitions)
+            # Ask the LLM (streaming tokens to on_token where supported).
+            # If the request died because cancel() aborted the stream,
+            # surface it as a clean cancellation.
+            try:
+                response = self._call_provider(messages, tool_definitions, on_token)
+            except CancellationError:
+                raise
+            except Exception:
+                if self._cancel_event.is_set():
+                    raise CancellationError("Task cancelled during generation")
+                raise
 
             # Check for cancellation after LLM response (before processing tool calls)
             self._check_cancelled()
@@ -185,6 +231,11 @@ class Agent:
                     "tool": tool_name,
                     "arguments": arguments,
                 })
+                # Broadcast the call itself before executing, so the dashboard
+                # shows a live "tool invocation" bubble even for safe tools
+                # (the round-end callback would only send the last log entry).
+                if progress_callback:
+                    progress_callback(self.logs)
 
                 # Check if tool requires explicit human approval
                 requires_app = (
@@ -275,20 +326,38 @@ class Agent:
 
     def _build_system_prompt(self):
         """
-        Tell the LLM who it is and what directories it can access.
-        Including the allowed paths helps the LLM use correct absolute paths
-        in tool calls instead of guessing.
+        A quiet footnote about the optional workstation tools — and nothing
+        else. Deliberately NO identity framing ("you are X assistant"):
+        whatever the prompt emphasizes, the model parrots back when asked
+        what it is. With no identity statement, the model answers as its
+        full self and treats the tools as the extras they are.
+
+        Still included (required for the tools to work safely):
+          - the allowed directories, so tool calls use correct absolute paths
+          - the note that write_file / run_command need human approval
         """
         allowed = "\n".join(f"  - {d}" for d in self.tool_registry.allowed_dirs)
 
-        return (
-            "You are an AI assistant inside the AI Command Center.\n"
-            "You have access to tools that let you inspect project files.\n\n"
-            "ALLOWED DIRECTORIES (use absolute paths from this list):\n"
-            f"{allowed}\n\n"
-            "RULES:\n"
-            "- Use tools when the task requires looking at real files or directories.\n"
-            "- When you have enough information, provide your final answer directly.\n"
-            "- Only use the tools provided. Do not invent tool names.\n"
-            "- Use absolute paths from the allowed directories list above.\n"
+        prompt = (
+            "A few workstation tools are available to you as optional extras:\n"
+            "list_files, read_file, write_file, run_command. Use one only when a\n"
+            "request genuinely benefits from touching real files or running a real\n"
+            "command — otherwise answer directly, exactly as you normally would.\n\n"
+            "If asked about yourself or your abilities, describe your FULL\n"
+            "capabilities as a model — knowledge, reasoning, math, coding, writing,\n"
+            "translation, analysis, and more. Never limit your self-description\n"
+            "to the tools listed above.\n\n"
+            "If you use a tool:\n"
+            "- Paths must be absolute and inside:\n"
+            f"{allowed}\n"
+            "- write_file and run_command require human approval before running."
         )
+
+        if self.task_description:
+            prompt += (
+                "\n\nWORKSPACE DESCRIPTION (context for this conversation, "
+                "set by the user when creating the task):\n"
+                f"{self.task_description}"
+            )
+
+        return prompt

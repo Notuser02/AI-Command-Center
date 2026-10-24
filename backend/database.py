@@ -25,6 +25,7 @@ def init_db():
         conn.execute("""
             CREATE TABLE IF NOT EXISTS tasks (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT,
                 task TEXT NOT NULL,
                 provider TEXT NOT NULL DEFAULT 'local',
                 model TEXT DEFAULT 'qwen3.5:9b',
@@ -36,13 +37,15 @@ def init_db():
                 messages TEXT
             )
         """)
-        # Ensure 'messages' and 'model' columns exist for existing tables
+        # Ensure 'messages', 'model' and 'name' columns exist for existing tables
         cursor = conn.execute("PRAGMA table_info(tasks)")
         cols = [r["name"] for r in cursor.fetchall()]
         if "messages" not in cols:
             conn.execute("ALTER TABLE tasks ADD COLUMN messages TEXT")
         if "model" not in cols:
             conn.execute("ALTER TABLE tasks ADD COLUMN model TEXT DEFAULT 'qwen3.5:9b'")
+        if "name" not in cols:
+            conn.execute("ALTER TABLE tasks ADD COLUMN name TEXT")
 
         conn.execute("""
             CREATE TABLE IF NOT EXISTS approvals (
@@ -63,8 +66,10 @@ class Task:
     def __init__(self, id: int, task: str, provider: str, status: str,
                  created_at: datetime, updated_at: datetime,
                  result: Optional[str] = None, logs: Optional[str] = None,
-                 messages: Optional[str] = None, model: Optional[str] = "qwen3.5:9b"):
+                 messages: Optional[str] = None, model: Optional[str] = "qwen3.5:9b",
+                 name: Optional[str] = None):
         self.id = id
+        self.name = name
         self.task = task
         self.provider = provider
         self.model = model or "qwen3.5:9b"
@@ -83,8 +88,10 @@ class TaskRepository:
     def _row_to_task(self, row: sqlite3.Row) -> Task:
         messages = row["messages"] if "messages" in row.keys() else None
         model = row["model"] if "model" in row.keys() else "qwen3.5:9b"
+        name = row["name"] if "name" in row.keys() else None
         return Task(
             id=row["id"],
+            name=name,
             task=row["task"],
             provider=row["provider"],
             status=row["status"],
@@ -96,21 +103,21 @@ class TaskRepository:
             model=model
         )
 
-    def create(self, task: str, provider: str = "local", model: str = "qwen3.5:9b") -> Task:
+    def create(self, task: str, provider: str = "local", model: str = "qwen3.5:9b",
+               name: Optional[str] = None) -> Task:
+        """
+        Create a task workspace. No first message is seeded — the
+        conversation starts when the user sends the first instruction.
+        `task` holds the description (context for the agent).
+        """
         now = datetime.now(timezone.utc).isoformat()
-        initial_messages = []
-        if task and task.strip():
-            initial_messages.append({
-                "role": "user",
-                "content": task,
-                "timestamp": now
-            })
-        messages_json = json.dumps(initial_messages)
+        messages_json = json.dumps([])
         with get_db() as conn:
             cursor = conn.execute(
-                """INSERT INTO tasks (task, provider, model, status, created_at, updated_at, messages)
-                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                (task, provider, model or "qwen3.5:9b", TaskStatus.PENDING.value, now, now, messages_json)
+                """INSERT INTO tasks (name, task, provider, model, status, created_at, updated_at, messages)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (name, task or "", provider, model or "qwen3.5:9b",
+                 TaskStatus.PENDING.value, now, now, messages_json)
             )
             conn.commit()
             task_id = cursor.lastrowid
@@ -189,6 +196,38 @@ class TaskRepository:
             )
             conn.commit()
             return cursor.rowcount > 0
+
+    def delete(self, task_id: int) -> bool:
+        """Permanently remove a task and its approval history."""
+        with get_db() as conn:
+            # approvals reference tasks by id — remove them first
+            # so no orphaned approval rows are left behind
+            conn.execute("DELETE FROM approvals WHERE task_id = ?", (task_id,))
+            cursor = conn.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
+            conn.commit()
+            return cursor.rowcount > 0
+
+    def reset_stale_running(self) -> int:
+        """
+        Mark tasks stuck in 'running' as failed.
+
+        Called once at server startup: if the server crashed or was stopped
+        while a task was executing, that task's status was never updated and
+        it would otherwise show 'running' forever.
+        Returns how many rows were fixed.
+        """
+        now = datetime.now(timezone.utc).isoformat()
+        with get_db() as conn:
+            cursor = conn.execute(
+                """UPDATE tasks
+                   SET status = ?,
+                       result = COALESCE(result, 'Interrupted: the server restarted while this task was running.'),
+                       updated_at = ?
+                   WHERE status = ?""",
+                (TaskStatus.FAILED.value, now, TaskStatus.RUNNING.value)
+            )
+            conn.commit()
+            return cursor.rowcount or 0
 
 
 class Approval:

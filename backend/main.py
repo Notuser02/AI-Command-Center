@@ -15,8 +15,9 @@ Run with:  uvicorn main:app --reload
 
 import os
 import asyncio
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
-from database import init_db
+from database import init_db, TaskRepository
 from agent.tools import ToolRegistry
 from services.task_service import TaskService
 from services.approval_service import ApprovalService
@@ -25,7 +26,25 @@ from services.connection_manager import ConnectionManager
 # ── Route modules ──
 from api import chat, agents, tasks, approvals, websocket
 
-app = FastAPI(title="AI Command Center")
+
+# ── Lifespan: runs once on startup, cleans up on shutdown ──
+# (The modern replacement for @app.on_event("startup"), which FastAPI
+#  has deprecated. Everything before `yield` runs at startup.)
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    init_db()
+
+    # Recover tasks left in 'running' by a previous server crash/restart
+    stale = TaskRepository().reset_stale_running()
+    if stale:
+        print(f"[startup] Recovered {stale} task(s) stuck in 'running' state (marked failed).")
+
+    # Provide the running event loop to connection_manager for threadsafe broadcasts
+    connection_manager.set_loop(asyncio.get_running_loop())
+    yield
+
+
+app = FastAPI(title="AI Command Center", lifespan=lifespan)
 
 # ── Tool security: the agent can ONLY access files inside this directory ──
 PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -70,10 +89,3 @@ def serve_dashboard():
 @app.get("/dashboard", response_class=FileResponse)
 def serve_dashboard_alias():
     return FileResponse(INDEX_HTML)
-
-
-@app.on_event("startup")
-def startup():
-    init_db()
-    # Provide the running event loop to connection_manager for threadsafe broadcasts
-    connection_manager.set_loop(asyncio.get_running_loop())

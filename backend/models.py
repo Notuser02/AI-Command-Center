@@ -14,7 +14,8 @@ class TaskStatus(str, Enum):
 
 
 class TaskCreate(BaseModel):
-    task: str
+    name: Optional[str] = None      # optional title; blank → UI shows TASK-<id>
+    task: str = ""                  # description / context for the agent
     provider: str = "local"
     model: Optional[str] = "qwen3.5:9b"
 
@@ -25,6 +26,7 @@ class MessageCreate(BaseModel):
 
 class TaskResponse(BaseModel):
     id: int
+    name: Optional[str] = None
     task: str
     provider: str
     model: Optional[str] = "qwen3.5:9b"

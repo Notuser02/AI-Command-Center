@@ -242,7 +242,7 @@ def build_tasks_panel() -> Panel:
     else:
         for t in task_list:
             t_id = str(t.get("id", "-"))
-            desc = str(t.get("task", ""))
+            desc = str(t.get("name") or t.get("task") or "")
             if len(desc) > 38:
                 desc = desc[:35] + "..."
             prov = str(t.get("provider", "local"))

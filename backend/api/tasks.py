@@ -2,11 +2,13 @@
 Task management routes.
 
 These endpoints handle the full task lifecycle:
-  POST /tasks           → create a new task (status: pending)
-  GET  /tasks           → list all tasks
-  GET  /tasks/{id}      → get one task's details + logs
-  POST /tasks/{id}/start → start running a task in the background
-  POST /tasks/{id}/stop  → cancel a running task
+  POST   /tasks           → create a new task (status: pending)
+  GET    /tasks           → list all tasks
+  GET    /tasks/{id}      → get one task's details + logs
+  POST   /tasks/{id}/start → start running a task in the background
+  POST   /tasks/{id}/stop  → cancel a running task
+  POST   /tasks/{id}/complete → archive a finished conversation
+  DELETE /tasks/{id}      → permanently delete a task + its history
 
 Tasks run asynchronously — starting a task returns immediately,
 and you poll GET /tasks/{id} to check progress. (WebSockets later.)
@@ -36,6 +38,7 @@ def _task_to_response(task) -> TaskResponse:
     """
     return TaskResponse(
         id=task.id,
+        name=getattr(task, "name", None),
         task=task.task,
         provider=task.provider,
         model=getattr(task, "model", "qwen3.5:9b"),
@@ -51,7 +54,8 @@ def _task_to_response(task) -> TaskResponse:
 @router.post("/tasks", response_model=TaskResponse)
 def create_task(task_in: TaskCreate):
     repo = TaskRepository()
-    task = repo.create(task_in.task, task_in.provider, model=task_in.model)
+    task = repo.create(task_in.task, task_in.provider, model=task_in.model,
+                       name=(task_in.name or None))
     resp = _task_to_response(task)
     if task_service and task_service.connection_manager:
         task_service.connection_manager.broadcast("task_created", resp.model_dump())
@@ -115,7 +119,31 @@ def complete_task(task_id: int):
     """Mark a task conversation as completed."""
     success = task_service.complete_task(task_id)
     if not success:
-        raise HTTPException(status_code=400, detail="Task not found")
+        repo = TaskRepository()
+        if repo.get(task_id) is None:
+            raise HTTPException(status_code=404, detail="Task not found")
+        raise HTTPException(
+            status_code=400,
+            detail="Task is currently running — stop it before finishing it"
+        )
     repo = TaskRepository()
     task = repo.get(task_id)
     return _task_to_response(task)
+
+
+@router.delete("/tasks/{task_id}")
+def delete_task(task_id: int):
+    """
+    Permanently delete a task and its history.
+    Refuses with 400 while the task is running (stop it first).
+    """
+    success = task_service.delete_task(task_id)
+    if not success:
+        repo = TaskRepository()
+        if repo.get(task_id) is None:
+            raise HTTPException(status_code=404, detail="Task not found")
+        raise HTTPException(
+            status_code=400,
+            detail="Task is currently running — stop it before deleting"
+        )
+    return {"deleted": True, "id": task_id}

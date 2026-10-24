@@ -61,9 +61,19 @@ class TaskService:
                     "log": logs[-1]
                 })
 
+        def on_token(delta: str):
+            # Live token streaming — broadcast only, never written to the
+            # database (that would mean 50+ writes/second during generation).
+            # The full text is persisted once when the turn finishes.
+            if self.connection_manager:
+                self.connection_manager.broadcast("task_token", {
+                    "task_id": task_id,
+                    "delta": delta
+                })
+
         async def run():
             try:
-                result = await agent.run_async(task, progress_callback, history=history)
+                result = await agent.run_async(task, progress_callback, history=history, on_token=on_token)
                 self.repo.append_message(task_id, role="assistant", content=result)
                 self.repo.update_result(task_id, result)
                 # Keep task in IDLE status so user can continue sending messages to it!
@@ -124,7 +134,8 @@ class TaskService:
             provider,
             tool_registry=self.tool_registry,
             approval_service=self.approval_service,
-            task_id=task_id
+            task_id=task_id,
+            task_description=(task.task or None)
         )
 
         with self._lock:
@@ -168,7 +179,8 @@ class TaskService:
             provider,
             tool_registry=self.tool_registry,
             approval_service=self.approval_service,
-            task_id=task_id
+            task_id=task_id,
+            task_description=(task.task or None)
         )
 
         with self._lock:
@@ -182,7 +194,14 @@ class TaskService:
         return True
 
     def complete_task(self, task_id: int) -> bool:
-        """Mark task explicitly as completed / archived."""
+        """
+        Mark task explicitly as completed / archived.
+        Refuses while the task is executing — the worker would overwrite
+        the status back to idle/cancelled when its turn ends.
+        """
+        if self.is_task_running(task_id):
+            return False
+
         success = self.repo.update_status(task_id, TaskStatus.COMPLETED)
         if success and self.connection_manager:
             self.connection_manager.broadcast("task_status_changed", {
@@ -190,6 +209,24 @@ class TaskService:
                 "status": TaskStatus.COMPLETED.value
             })
         return success
+
+    def delete_task(self, task_id: int) -> bool:
+        """
+        Permanently delete a task, its message history, and its approvals.
+        Refuses while the task is executing (stop it first) — deleting a
+        running agent would leave its worker thread writing to a gone row.
+        """
+        if self.is_task_running(task_id):
+            return False
+
+        if not self.repo.delete(task_id):
+            return False
+
+        if self.connection_manager:
+            self.connection_manager.broadcast("task_deleted", {
+                "task_id": task_id
+            })
+        return True
 
     def cancel_task(self, task_id: int) -> bool:
         with self._lock:

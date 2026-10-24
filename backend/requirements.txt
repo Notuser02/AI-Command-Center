@@ -1,0 +1,10 @@
+# AI Command Center — Python dependencies
+# Install with:  pip install -r requirements.txt
+# (Run this from the backend/ folder, ideally inside a fresh venv.)
+
+fastapi==0.141.1        # web framework (routes, WebSockets, Pydantic models)
+uvicorn==0.53.0         # ASGI server that runs the FastAPI app
+requests==2.34.2        # HTTP calls to local Ollama / online providers
+websockets==17.2        # WebSocket client (cli_dashboard.py, test scripts)
+rich==15.0.0            # terminal UI for cli_dashboard.py
+python-dotenv==1.2.3    # loads NEBIUS_API_KEY etc. from backend/.env

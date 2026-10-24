@@ -21,6 +21,11 @@ MAX_FILE_SIZE = 100_000  # 100 KB — prevents reading huge files
 # Directories/files to hide from list_files (noise, not useful to agent)
 IGNORED_NAMES = {"venv", "__pycache__", ".git", "node_modules", ".env"}
 
+# Files the agent may never read OR write, even inside allowed dirs.
+# These hold secrets (.env contains API keys) — hiding them from listings
+# is not enough, the agent must not be able to open them directly either.
+SENSITIVE_FILE_PREFIXES = (".env",)
+
 
 class ToolRegistry:
     """
@@ -40,11 +45,12 @@ class ToolRegistry:
         self._tools = {
             "list_files": self._list_files,
             "read_file": self._read_file,
+            "write_file": self._write_file,
             "run_command": self._run_command,
         }
 
         # Sensitive tools that require human approval before execution
-        self._sensitive_tools = {"run_command"}
+        self._sensitive_tools = {"write_file", "run_command"}
 
     # ── Path validation ────────────────────────────────────────────
 
@@ -70,6 +76,19 @@ class ToolRegistry:
             f"Allowed: {self.allowed_dirs}"
         )
 
+    def _validate_sensitive(self, abs_path):
+        """
+        Reject secret files (.env etc.) even though they sit inside the
+        allowed directories. list_files hides them, but without this check
+        the agent could still open them by guessing the path.
+        """
+        name = os.path.basename(abs_path).lower()
+        if name.startswith(SENSITIVE_FILE_PREFIXES):
+            raise PermissionError(
+                f"Access denied: '{name}' is a sensitive file the agent may not touch."
+            )
+        return abs_path
+
     # ── Tool implementations ──────────────────────────────────────
 
     def _list_files(self, directory):
@@ -92,7 +111,7 @@ class ToolRegistry:
 
     def _read_file(self, file_path):
         """Read contents of a text file."""
-        safe_path = self._validate_path(file_path)
+        safe_path = self._validate_sensitive(self._validate_path(file_path))
 
         if not os.path.isfile(safe_path):
             return f"Error: '{file_path}' is not a file."
@@ -106,6 +125,35 @@ class ToolRegistry:
                 return f.read()
         except UnicodeDecodeError:
             return "Error: file appears to be binary, cannot read as text."
+
+    def _write_file(self, file_path, content):
+        """
+        Create or overwrite a text file inside the sandbox.
+        Sensitive tool: requires human approval before it runs.
+        """
+        safe_path = self._validate_sensitive(self._validate_path(file_path))
+
+        if not isinstance(content, str):
+            return "Error: 'content' must be a string."
+
+        if len(content.encode("utf-8")) > MAX_FILE_SIZE:
+            return f"Error: content exceeds {MAX_FILE_SIZE:,} byte limit."
+
+        # Allow the agent to create files in new subfolders (path is already
+        # validated to be inside the sandbox at this point).
+        parent = os.path.dirname(safe_path)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+
+        try:
+            # newline="\n" stops Windows from converting \n to \r\n — keeps
+            # line endings consistent with git and other tools.
+            with open(safe_path, "w", encoding="utf-8", newline="\n") as f:
+                f.write(content)
+        except OSError as e:
+            return f"Error writing file: {e}"
+
+        return f"OK: wrote {len(content)} characters to {safe_path}"
 
     def _run_command(self, command: str):
         """
@@ -211,6 +259,31 @@ class ToolRegistry:
                             }
                         },
                         "required": ["file_path"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "write_file",
+                    "description": (
+                        "Create or overwrite a text file with the given content. "
+                        "Only works within allowed project directories. "
+                        "NOTE: This is a sensitive action that requires explicit human approval before running."
+                    ),
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "file_path": {
+                                "type": "string",
+                                "description": "Absolute path of the file to create or overwrite.",
+                            },
+                            "content": {
+                                "type": "string",
+                                "description": "The complete text content to write into the file.",
+                            }
+                        },
+                        "required": ["file_path", "content"],
                     },
                 },
             },

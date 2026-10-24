@@ -51,6 +51,29 @@
       opacity: 0.25;
     }
 
+    /* Slim theme-matched scrollbars (thread stream, task list, inputs).
+       Webkit pseudo-elements only — the standard scrollbar-width/color
+       properties would override these in Chromium 121+ and lose the
+       hover glow. */
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #22334d;
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: var(--neon-cyan);
+      box-shadow: 0 0 6px rgba(0, 240, 255, 0.45);
+    }
+    ::-webkit-scrollbar-corner {
+      background: transparent;
+    }
+
     header {
       background: var(--bg-panel-header);
       border-bottom: 1px solid var(--border-color);
@@ -84,6 +107,59 @@
       font-size: 10px;
       border-radius: 3px;
       font-weight: 600;
+    }
+
+    /* Home button — returns to the welcome / workspace overview screen */
+    .btn-home {
+      background: rgba(0, 240, 255, 0.08);
+      border: 1px solid var(--neon-cyan);
+      color: var(--neon-cyan);
+      padding: 4px 10px;
+      font-family: inherit;
+      font-size: 10px;
+      font-weight: 700;
+      border-radius: 3px;
+      cursor: pointer;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      transition: all 0.2s;
+    }
+
+    .btn-home:hover {
+      background: var(--neon-cyan);
+      color: #000;
+      box-shadow: 0 0 12px rgba(0, 240, 255, 0.5);
+    }
+
+    /* Sidebar header row: big NEW TASK button + compact toggle beside it */
+    .sidebar-header .btn-home {
+      padding: 6px 10px;
+      font-size: 10px;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    /* Home screen call-to-action: replaces the message input when no
+       task is selected, inviting you to create a workspace instead. */
+    .home-cta {
+      display: flex;
+      justify-content: center;
+      padding: 8px 0;
+    }
+
+    .home-cta .btn-new-task {
+      width: 100%;
+      max-width: 460px;
+      padding: 12px 14px;
+      font-size: 13px;
+    }
+
+    /* Sidebar hidden: workspace takes the full width */
+    main.sidebar-hidden {
+      grid-template-columns: 1fr;
+    }
+    main.sidebar-hidden aside.sidebar {
+      display: none;
     }
 
     .status-group {
@@ -413,6 +489,20 @@
       font-weight: 700;
     }
 
+    /* Live streaming bubble (tokens arriving right now) */
+    .bubble-streaming {
+      border-left-color: var(--neon-cyan);
+    }
+
+    .stream-cursor {
+      color: var(--neon-cyan);
+      animation: blink 1s step-end infinite;
+    }
+
+    @keyframes blink {
+      50% { opacity: 0; }
+    }
+
     .bubble-text {
       white-space: pre-wrap;
       word-break: break-word;
@@ -538,7 +628,8 @@
   <header>
     <div class="brand">
       <div class="brand-title">AI Command Center</div>
-      <div class="brand-badge">AGENT WORKSPACES</div>
+      <div class="brand-badge" id="brandBadge">Agent Workspaces · 0</div>
+      <button id="btnHome" class="btn-home" title="Back to the workspace overview">⌂ Home</button>
     </div>
     <div class="status-group">
       <div class="status-item">
@@ -561,9 +652,12 @@
     <!-- Left: Task Sessions / Workspaces -->
     <aside class="sidebar">
       <div class="sidebar-header">
-        <button id="btnOpenNewTaskModal" class="btn-new-task">
-          <span>+</span> NEW TASK WORKSPACE
-        </button>
+        <div id="sidebarHeaderRow" style="display: flex; gap: 8px; align-items: stretch;">
+          <button id="btnOpenNewTaskModal" class="btn-new-task" style="flex: 1;">
+            <span>+</span> NEW TASK WORKSPACE
+          </button>
+          <!-- the Tasks toggle button lives here while the sidebar is open -->
+        </div>
       </div>
 
       <div id="tasksList" class="tasks-list">
@@ -576,10 +670,13 @@
       <!-- Workspace Top Bar -->
       <div class="workspace-header">
         <div class="workspace-title-box">
+          <button id="btnToggleTasks" class="btn-home" title="Show or hide the task list">▌▌ Tasks</button>
           <span id="activeTaskIdBadge" class="badge badge-idle">NO ACTIVE TASK</span>
           <span id="activeTaskTitle" class="workspace-title">Select or Create a Task to begin</span>
         </div>
         <div id="workspaceActions" style="display: none; gap: 8px;">
+          <button id="btnStopTask" class="btn-action btn-danger">■ STOP RESPONSE</button>
+          <button id="btnDeleteTask" class="btn-action btn-danger">✖ DELETE</button>
           <button id="btnCompleteTask" class="btn-action btn-success">✔ FINISH TASK</button>
         </div>
       </div>
@@ -607,7 +704,14 @@
 
       <!-- Message / Prompt Input Dock -->
       <div class="input-dock">
-        <div class="input-row">
+        <!-- Home screen: creation call-to-action instead of the message input -->
+        <div id="homeCta" class="home-cta" style="display: none;">
+          <button id="btnHomeNewTask" class="btn-new-task">
+            <span>+</span> CREATE A NEW TASK WORKSPACE
+          </button>
+        </div>
+
+        <div id="inputRow" class="input-row">
           <textarea id="messageInput" class="message-input" placeholder="Type instruction or follow-up for this task (Agent retains full conversation history)..." disabled></textarea>
           <button id="btnSendMessage" class="btn-send" disabled>&gt; SEND</button>
         </div>
@@ -621,29 +725,37 @@
       <div class="modal-title">&gt; CREATE NEW TASK WORKSPACE</div>
       <div style="font-size: 12px; color: var(--text-dim);">
         Each task is an independent session with its own conversation history and agent context.
+        The conversation starts when you send the first instruction inside the workspace.
       </div>
       <div>
-        <label style="display: block; margin-bottom: 6px; font-size: 12px; color: var(--text-main);">Task Objective / First Instruction:</label>
-        <textarea id="modalTaskInput" class="message-input" style="width: 100%; min-height: 80px;" placeholder="e.g. 'Analyze project architecture and inspect files' or 'Run tests and report status'"></textarea>
+        <label style="display: block; margin-bottom: 6px; font-size: 12px; color: var(--text-main);">Task Name <span style="color: var(--text-dim);">(optional — leave blank to auto-number)</span>:</label>
+        <input id="modalTaskName" class="message-input" style="width: 100%; min-height: 38px;" placeholder="e.g. 'Refactor Auth Module' or 'Research Thread'">
+      </div>
+      <div>
+        <label style="display: block; margin-bottom: 6px; font-size: 12px; color: var(--text-main);">Description <span style="color: var(--text-dim);">(optional context the agent will see)</span>:</label>
+        <textarea id="modalTaskInput" class="message-input" style="width: 100%; min-height: 70px;" placeholder="e.g. 'Workspace for analyzing and improving the project architecture'"></textarea>
       </div>
       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
         <div>
           <label style="display: block; margin-bottom: 6px; font-size: 12px; color: var(--text-main);">AI Provider:</label>
           <select id="modalProviderSelect" class="message-input" style="width: 100%;">
             <option value="local">Local (Ollama)</option>
-            <option value="online">Online (Nebius Cloud)</option>
+            <option value="online">Online</option>
           </select>
         </div>
         <div>
           <label style="display: block; margin-bottom: 6px; font-size: 12px; color: var(--text-main);">Model:</label>
-          <select id="modalModelSelect" class="message-input" style="width: 100%;">
-            <option value="qwen3.5:9b">qwen3.5:9b</option>
-          </select>
+          <div style="display: flex; gap: 6px;">
+            <select id="modalModelSelect" class="message-input" style="width: 100%; flex: 1;">
+              <option value="qwen3.5:9b">qwen3.5:9b</option>
+            </select>
+            <button id="btnRefreshModels" class="btn-action" title="Re-fetch the model list from Ollama" style="flex-shrink: 0;">↻</button>
+          </div>
         </div>
       </div>
       <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 8px;">
         <button id="btnCancelModal" class="btn-action">Cancel</button>
-        <button id="btnConfirmCreateTask" class="btn-action btn-success">&gt; INITIALIZE TASK</button>
+        <button id="btnConfirmCreateTask" class="btn-action btn-success">&gt; CREATE TASK</button>
       </div>
     </div>
   </div>
@@ -657,6 +769,14 @@
     let activeTaskId = null;
     let activeApproval = null;
     let socket = null;
+    let streamingBubble = null;          // the live "agent is typing" bubble
+    let pendingOptimisticMessage = null; // dedupe our own user-message WS echo
+
+    // Partial streamed text per task: taskId -> text generated so far in the
+    // current turn. Tokens accumulate here even when the task is NOT open,
+    // so switching away and back replays the full in-progress response.
+    // Cleared when the turn ends (final message / status change).
+    const streamingTextBuffers = {};
 
     // Elements
     const wsIndicator = document.getElementById('wsIndicator');
@@ -670,10 +790,57 @@
     const activeTaskTitle = document.getElementById('activeTaskTitle');
     const workspaceActions = document.getElementById('workspaceActions');
     const btnCompleteTask = document.getElementById('btnCompleteTask');
+    const btnDeleteTask = document.getElementById('btnDeleteTask');
+    const btnStopTask = document.getElementById('btnStopTask');
     const approvalBanner = document.getElementById('approvalBanner');
     const approvalDetailsText = document.getElementById('approvalDetailsText');
     const btnApproveAction = document.getElementById('btnApproveAction');
     const btnDenyAction = document.getElementById('btnDenyAction');
+
+    // Home — deselect any open task and return to the welcome screen.
+    // Running tasks keep working in the background (their stream buffers
+    // accumulate), so clicking back into them resumes the live view.
+    const btnHome = document.getElementById('btnHome');
+    btnHome.addEventListener('click', () => {
+      clearWorkspace();
+    });
+
+    // Show / hide the task sidebar. The choice is remembered across reloads.
+    const btnToggleTasks = document.getElementById('btnToggleTasks');
+
+    function setTasksVisible(visible) {
+      document.querySelector('main').classList.toggle('sidebar-hidden', !visible);
+      btnToggleTasks.textContent = visible ? '▌▌ Tasks' : '▶ Tasks';
+
+      // One button, two homes: beside the big NEW TASK button while the
+      // sidebar is open; in the workspace header (next to NO ACTIVE TASK)
+      // while hidden, so it can always bring the list back.
+      if (visible) {
+        document.getElementById('sidebarHeaderRow').appendChild(btnToggleTasks);
+      } else {
+        document.querySelector('.workspace-title-box').prepend(btnToggleTasks);
+      }
+
+      try { localStorage.setItem('tasksVisible', visible ? '1' : '0'); } catch (e) {}
+    }
+
+    btnToggleTasks.addEventListener('click', () => {
+      const hidden = document.querySelector('main').classList.contains('sidebar-hidden');
+      setTasksVisible(hidden);
+    });
+
+    // Restore the user's last choice (defaults to visible)
+    setTasksVisible(localStorage.getItem('tasksVisible') !== '0');
+
+    // Home screen CTA — same creation modal as the sidebar button
+    const btnHomeNewTask = document.getElementById('btnHomeNewTask');
+    btnHomeNewTask.addEventListener('click', () => {
+      modalTaskName.value = '';
+      modalTaskInput.value = '';
+      loadModels();
+      newTaskModal.classList.add('open');
+      modalTaskName.focus();
+    });
 
     // Modal elements
     const newTaskModal = document.getElementById('newTaskModal');
@@ -681,6 +848,7 @@
     const btnCancelModal = document.getElementById('btnCancelModal');
     const btnConfirmCreateTask = document.getElementById('btnConfirmCreateTask');
     const modalTaskInput = document.getElementById('modalTaskInput');
+    const modalTaskName = document.getElementById('modalTaskName');
     const modalProviderSelect = document.getElementById('modalProviderSelect');
     const modalModelSelect = document.getElementById('modalModelSelect');
 
@@ -699,6 +867,7 @@
     }
 
     function updateModelDropdown() {
+      const previous = modalModelSelect.value;
       const provider = modalProviderSelect.value;
       const list = (provider === 'local') ? (availableModels.local || []) : (availableModels.online || []);
       modalModelSelect.innerHTML = '';
@@ -708,9 +877,17 @@
         opt.textContent = m;
         modalModelSelect.appendChild(opt);
       });
+      // Keep the user's pick across a refresh when it's still installed
+      if (previous && list.includes(previous)) {
+        modalModelSelect.value = previous;
+      }
     }
 
     modalProviderSelect.addEventListener('change', updateModelDropdown);
+
+    // Explicit model list refresh in the creation modal
+    const btnRefreshModels = document.getElementById('btnRefreshModels');
+    btnRefreshModels.addEventListener('click', () => loadModels());
 
     // Clock
     function updateClock() {
@@ -755,26 +932,69 @@
           loadTasks();
           break;
 
+        case 'task_deleted':
+          applyTaskDeleted(data.task_id);
+          break;
+
         case 'task_status_changed':
           // Update status in local task list
           updateTaskStatusLocally(data.task_id, data.status);
+          if (data.status !== 'running') {
+            delete streamingTextBuffers[data.task_id]; // turn over — buffer no longer needed
+          }
           if (activeTaskId === data.task_id) {
             updateActiveWorkspaceHeader();
             if (data.status === 'running') {
               btnSendMessage.disabled = true;
             } else {
               btnSendMessage.disabled = false;
+              removeStreamingBubble(); // turn ended — drop any dangling typing bubble
             }
           }
           break;
 
         case 'task_message':
-          if (activeTaskId === data.task_id) {
-            appendMessageBubble(data.role, data.content);
+          // The final text supersedes the stream buffer for every task,
+          // open or not (the buffer is only for in-progress turns).
+          if (data.role === 'assistant') {
+            delete streamingTextBuffers[data.task_id];
+          }
+
+          if (activeTaskId !== data.task_id) break;
+
+          // Our own message comes back as an echo — we already rendered it
+          // optimistically, so skip it instead of duplicating it.
+          if (data.role === 'user' && pendingOptimisticMessage !== null &&
+              data.content === pendingOptimisticMessage) {
+            pendingOptimisticMessage = null;
+            break;
+          }
+
+          // The final text replaces the live streaming bubble
+          if (data.role === 'assistant') removeStreamingBubble();
+          appendMessageBubble(data.role, data.content);
+          break;
+
+        case 'task_token':
+          // Always accumulate into the task's buffer; render only if open.
+          if (data.task_id != null && data.delta) {
+            streamingTextBuffers[data.task_id] = (streamingTextBuffers[data.task_id] || '') + data.delta;
+            if (activeTaskId === data.task_id) {
+              getStreamingTextEl().textContent = streamingTextBuffers[data.task_id];
+            }
           }
           break;
 
         case 'task_log':
+          if (data.log && (data.log.type === 'tool_call' || data.log.type === 'tool_result')) {
+            // A tool event splits the stream: seal the visible bubble and put
+            // a blank line in the buffer so bursts don't glue together.
+            if (activeTaskId === data.task_id) sealStreamingBubble();
+            const buf = streamingTextBuffers[data.task_id];
+            if (buf && !buf.endsWith('\n')) {
+              streamingTextBuffers[data.task_id] = buf + '\n\n';
+            }
+          }
           if (activeTaskId === data.task_id) {
             appendLogBubble(data.log);
           }
@@ -790,11 +1010,14 @@
       }
     }
 
-    // Modal Handlers
+    // Modal Handlers — the model list is re-fetched every time the modal
+    // opens, so freshly pulled Ollama models appear without a page reload.
     btnOpenNewTaskModal.addEventListener('click', () => {
+      modalTaskName.value = '';
       modalTaskInput.value = '';
+      loadModels();
       newTaskModal.classList.add('open');
-      modalTaskInput.focus();
+      modalTaskName.focus();
     });
 
     btnCancelModal.addEventListener('click', () => {
@@ -802,9 +1025,12 @@
     });
 
     btnConfirmCreateTask.addEventListener('click', async () => {
-      const text = modalTaskInput.value.trim();
-      if (!text) {
-        modalTaskInput.focus();
+      const name = modalTaskName.value.trim();
+      const description = modalTaskInput.value.trim();
+
+      // Need at least something to identify the workspace by
+      if (!name && !description) {
+        modalTaskName.focus();
         return;
       }
 
@@ -816,7 +1042,12 @@
         const res = await fetch(`${HTTP_BASE}/tasks`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ task: text, provider: provider, model: model })
+          body: JSON.stringify({
+            name: name || null,
+            task: description,
+            provider: provider,
+            model: model
+          })
         });
 
         if (!res.ok) throw new Error('Failed to create task');
@@ -825,9 +1056,8 @@
         newTaskModal.classList.remove('open');
         await loadTasks();
         selectTask(created.id);
-
-        // Start task turn immediately
-        await fetch(`${HTTP_BASE}/tasks/${created.id}/start`, { method: 'POST' });
+        // No auto-start: the workspace waits for the first instruction,
+        // which the user types into the message dock.
       } catch (e) {
         alert('Error creating task: ' + e.message);
       } finally {
@@ -846,6 +1076,9 @@
         // If no active task is selected yet, select the most recent one
         if (!activeTaskId && tasks.length > 0) {
           selectTask(tasks[0].id);
+        } else if (!activeTaskId && tasks.length === 0) {
+          // Empty database — show the home screen with its create CTA
+          clearWorkspace();
         }
       } catch (e) {
         console.error('Error loading tasks:', e);
@@ -854,20 +1087,24 @@
 
     function renderTasksList() {
       tasksList.innerHTML = '';
-      tasks.forEach(t => {
-        const card = document.createElement('div');
+      tasks.forEach(t => {        const card = document.createElement('div');
         card.className = `task-card ${t.id === activeTaskId ? 'active' : ''}`;
         card.onclick = () => selectTask(t.id);
 
         const badgeClass = `badge-${t.status.toLowerCase()}`;
         const msgCount = (t.messages && t.messages.length) ? `${t.messages.length} msgs` : '0 msgs';
 
+        // Named tasks: name followed by the number. Unnamed: TASK-<id>.
+        const idLine = t.name
+          ? `${escapeHtml(t.name)} <span style="color:var(--text-dim);font-weight:400">#${t.id}</span>`
+          : `TASK-${t.id}`;
+
         card.innerHTML = `
           <div class="task-card-header">
-            <span class="task-card-id">#TASK-${t.id}</span>
+            <span class="task-card-id">${idLine}</span>
             <span class="badge ${badgeClass}">${t.status}</span>
           </div>
-          <div class="task-card-title">${escapeHtml(t.task)}</div>
+          ${t.task ? `<div class="task-card-title">${escapeHtml(t.task)}</div>` : ''}
           <div class="task-card-meta">
             <span>${t.provider} · <strong style="color:var(--neon-cyan)">${t.model || 'qwen3.5:9b'}</strong></span>
             <span>${msgCount}</span>
@@ -875,6 +1112,17 @@
         `;
         tasksList.appendChild(card);
       });
+
+      updateBadgeCount();
+    }
+
+    // Live task counter in the header badge — refreshes whenever the
+    // task list re-renders (load, create, delete, status changes).
+    function updateBadgeCount() {
+      const el = document.getElementById('brandBadge');
+      if (el) {
+        el.textContent = `Agent Workspaces · ${tasks.length} task${tasks.length === 1 ? '' : 's'}`;
+      }
     }
 
     function updateTaskStatusLocally(taskId, status) {
@@ -898,10 +1146,20 @@
         updateActiveWorkspaceHeader(task);
         renderTaskConversation(task);
 
+        // If this task is mid-response, replay the partial text streamed
+        // so far (it kept accumulating while another task was open).
+        if (task.status === 'running' && streamingTextBuffers[taskId]) {
+          getStreamingTextEl().textContent = streamingTextBuffers[taskId];
+        }
+
         messageInput.disabled = false;
         btnSendMessage.disabled = (task.status === 'running');
-        workspaceActions.style.display = 'flex';
-        messageInput.placeholder = `Type follow-up instruction for Task #${task.id}...`;
+        document.getElementById('homeCta').style.display = 'none';
+        document.getElementById('inputRow').style.display = 'flex';
+        const displayName = task.name || `TASK-${task.id}`;
+        messageInput.placeholder = (task.messages && task.messages.length)
+          ? `Type follow-up instruction for ${displayName}...`
+          : `Type the FIRST instruction for ${displayName} — the agent sees the description as context...`;
         messageInput.focus();
       } catch (e) {
         console.error('Error selecting task:', e);
@@ -912,11 +1170,78 @@
       const task = taskData || tasks.find(x => x.id === activeTaskId);
       if (!task) return;
 
-      activeTaskIdBadge.textContent = `#TASK-${task.id}`;
+      // Badge shows the lifecycle state; the title shows the task's name
+      // (followed by its number) or the allotted TASK-<id> when unnamed.
+      activeTaskIdBadge.textContent = task.status;
       activeTaskIdBadge.className = `badge badge-${task.status.toLowerCase()}`;
-      activeTaskTitle.textContent = `${task.task} [${task.model || 'qwen3.5:9b'}]`;
+
+      if (task.name) {
+        activeTaskTitle.innerHTML =
+          `${escapeHtml(task.name)} <span style="color:var(--text-dim);font-weight:400">#${task.id}</span>`;
+      } else if (task.task) {
+        const trunc = task.task.length > 60 ? task.task.slice(0, 57) + '...' : task.task;
+        activeTaskTitle.innerHTML =
+          `TASK-${task.id} <span style="color:var(--text-dim);font-weight:400">· ${escapeHtml(trunc)}</span>`;
+      } else {
+        activeTaskTitle.textContent = `TASK-${task.id}`;
+      }
+
       const modelEl = document.getElementById('modelName');
       if (modelEl) modelEl.textContent = task.model || 'qwen3.5:9b';
+
+      updateWorkspaceActions(task);
+    }
+
+    // Show/hide workspace buttons based on the task's lifecycle state.
+    // STOP only while responding, FINISH only for unfinished tasks,
+    // DELETE for anything that isn't currently executing.
+    function updateWorkspaceActions(task) {
+      const canStop = task.status === 'running';
+      const canFinish = ['pending', 'idle', 'failed', 'cancelled'].includes(task.status);
+      const canDelete = task.status !== 'running';
+
+      btnStopTask.style.display = canStop ? '' : 'none';
+      btnStopTask.disabled = false;
+      btnCompleteTask.style.display = canFinish ? '' : 'none';
+      btnDeleteTask.style.display = canDelete ? '' : 'none';
+      workspaceActions.style.display = (canStop || canFinish || canDelete) ? 'flex' : 'none';
+    }
+
+    // Reset the right panel to its "nothing selected" state.
+    function clearWorkspace() {
+      activeTaskId = null;
+      removeStreamingBubble();
+
+      activeTaskIdBadge.textContent = 'NO ACTIVE TASK';
+      activeTaskIdBadge.className = 'badge badge-idle';
+      activeTaskTitle.textContent = 'Select or Create a Task to begin';
+      workspaceActions.style.display = 'none';
+
+      // Home screen: swap the message input for the creation call-to-action
+      document.getElementById('homeCta').style.display = 'flex';
+      document.getElementById('inputRow').style.display = 'none';
+
+      threadStream.innerHTML = `
+        <div class="empty-state">
+          <div style="font-size: 24px; color: var(--neon-cyan);">[ AI AGENT WORKSPACE ]</div>
+          <div>Create a task on the left or select an existing one to continue your conversation.</div>
+          <div style="font-size: 11px; color: var(--text-dim);">All messages and tool calls stay inside the selected task thread.</div>
+        </div>
+      `;
+
+      renderTasksList();
+    }
+
+    // Remove a deleted task everywhere (sidebar card, open workspace).
+    // Called both locally after a DELETE and from the task_deleted WS event,
+    // so all connected dashboards stay in sync — idempotent by design.
+    function applyTaskDeleted(taskId) {
+      tasks = tasks.filter(t => t.id !== taskId);
+      delete streamingTextBuffers[taskId];
+      renderTasksList();
+      if (activeTaskId === taskId) {
+        clearWorkspace();
+      }
     }
 
     function renderTaskConversation(task) {
@@ -926,10 +1251,12 @@
       const logs = task.logs || [];
 
       if (messages.length === 0 && (!task.result)) {
+        const displayName = task.name || `TASK-${task.id}`;
         threadStream.innerHTML = `
           <div class="empty-state">
-            <div style="font-size: 16px; color: var(--neon-cyan);">Workspace #TASK-${task.id} Ready</div>
-            <div>No messages yet. Send an instruction below to begin!</div>
+            <div style="font-size: 16px; color: var(--neon-cyan);">${escapeHtml(displayName)} ready</div>
+            <div>${task.task ? escapeHtml(task.task) : 'No description set.'}</div>
+            <div style="font-size: 11px; color: var(--text-dim);">Send the first instruction below — the agent will use the description as context.</div>
           </div>
         `;
         return;
@@ -965,6 +1292,41 @@
 
       threadStream.appendChild(bubble);
       scrollThreadToBottom();
+    }
+
+    // ── Live token streaming helpers ──────────────────────────────
+
+    function getStreamingTextEl() {
+      if (!streamingBubble || !streamingBubble.isConnected) {
+        streamingBubble = document.createElement('div');
+        streamingBubble.className = 'stream-bubble bubble-assistant bubble-streaming';
+
+        const author = document.createElement('div');
+        author.className = 'bubble-author';
+        author.innerHTML = '✔ AGENT RESPONDING&nbsp;<span class="stream-cursor">▌</span>';
+
+        const text = document.createElement('div');
+        text.className = 'bubble-text';
+
+        streamingBubble.appendChild(author);
+        streamingBubble.appendChild(text);
+        threadStream.appendChild(streamingBubble);
+      }
+      scrollThreadToBottom();
+      return streamingBubble.querySelector('.bubble-text');
+    }
+
+    // Keep the sealed bubble on screen, but detach our reference so the
+    // next streamed token opens a fresh bubble (used when a tool call interrupts).
+    function sealStreamingBubble() {
+      streamingBubble = null;
+    }
+
+    function removeStreamingBubble() {
+      if (streamingBubble && streamingBubble.isConnected) {
+        streamingBubble.remove();
+      }
+      streamingBubble = null;
     }
 
     function appendLogBubble(log) {
@@ -1007,7 +1369,9 @@
       messageInput.value = '';
       btnSendMessage.disabled = true;
 
-      // Optimistically append user message bubble
+      // Optimistically append user message bubble (remember it so we can
+      // ignore the WebSocket echo of our own message)
+      pendingOptimisticMessage = text;
       appendMessageBubble('user', text);
 
       try {
@@ -1022,6 +1386,7 @@
         }
       } catch (e) {
         alert('Error sending message: ' + e.message);
+        pendingOptimisticMessage = null; // no echo will come — stop waiting for it
         btnSendMessage.disabled = false;
       }
     }
@@ -1035,11 +1400,52 @@
       }
     });
 
+    btnStopTask.addEventListener('click', async () => {
+      if (!activeTaskId) return;
+      btnStopTask.disabled = true; // avoid double-clicks; WS status re-enables it
+      try {
+        const res = await fetch(`${HTTP_BASE}/tasks/${activeTaskId}/stop`, { method: 'POST' });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          alert(err.detail || 'Failed to stop task');
+          btnStopTask.disabled = false;
+        }
+      } catch (e) {
+        alert('Error stopping task: ' + e.message);
+        btnStopTask.disabled = false;
+      }
+    });
+
     btnCompleteTask.addEventListener('click', async () => {
       if (!activeTaskId) return;
       if (confirm(`Mark Task #${activeTaskId} as completed?`)) {
-        await fetch(`${HTTP_BASE}/tasks/${activeTaskId}/complete`, { method: 'POST' });
-        loadTasks();
+        const res = await fetch(`${HTTP_BASE}/tasks/${activeTaskId}/complete`, { method: 'POST' });
+        if (res.ok) {
+          // Update immediately from the response (the WS event covers other clients)
+          const task = await res.json();
+          updateTaskStatusLocally(task.id, task.status);
+          updateActiveWorkspaceHeader(task);
+          loadTasks();
+        }
+      }
+    });
+
+    btnDeleteTask.addEventListener('click', async () => {
+      if (!activeTaskId) return;
+      const taskId = activeTaskId;
+      if (!confirm(`Permanently delete Task #${taskId} and its entire conversation history?`)) return;
+
+      try {
+        const res = await fetch(`${HTTP_BASE}/tasks/${taskId}`, { method: 'DELETE' });
+        if (res.ok) {
+          applyTaskDeleted(taskId);
+          loadTasks();
+        } else {
+          const err = await res.json().catch(() => ({}));
+          alert(err.detail || 'Failed to delete task');
+        }
+      } catch (e) {
+        alert('Error deleting task: ' + e.message);
       }
     });
 
