@@ -340,15 +340,13 @@ class Agent:
         allowed = "\n".join(f"  - {d}" for d in self.tool_registry.allowed_dirs)
 
         prompt = (
-            "You can interact with the user's PC and the internet through workstation "
-            "tools:\n"
-            "list_files, read_file, search_files, write_file, run_command,\n"
-            "web_search, web_fetch.\n\n"
-            "You have NO other access to the user's computer or to current information.\n"
-            "So whenever a question is about the user's PC, its state, files, running\n"
-            "software, or anything needing present-day facts, you MUST call the relevant\n"
-            "tool. Answering such questions from memory — or saying you cannot access\n"
-            "them — is incorrect: the tools are how you do it.\n\n"
+            "You can interact with the user's PC through workstation tools:\n"
+            "list_files, read_file, search_files, write_file, run_command.\n\n"
+            "You have NO other access to the user's computer.\n"
+            "So whenever a question is about the user's PC, its state, files, or\n"
+            "running software, you MUST call the relevant tool. Answering such\n"
+            "questions from memory — or saying you cannot access them — is\n"
+            "incorrect: the tools are how you do it.\n\n"
             "For general knowledge, explanations, opinions, or creative work, just\n"
             "answer directly as you normally would; no tool is needed.\n\n"
             "If asked about yourself or your abilities, describe your FULL\n"

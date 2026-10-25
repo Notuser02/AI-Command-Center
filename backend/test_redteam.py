@@ -81,15 +81,6 @@ for host in ["10.3.39.142", "192.168.56.1", "172.20.0.5", "100.118.150.53"]:
 for host in ["example.com", "8.8.8.8", "pypi.org"]:
     check(f"public stays allowed: {host}", not _is_blocked_host(host))
 
-# ── 7. live web_fetch SSRF attempts (needs internet for DNS) ──
-for url, why in [
-    ("http://127.0.0.1:8000/status", "loopback"),
-    ("http://2130706433:8000/status", "decimal loopback"),
-    ("http://127.0.0.1.nip.io:8000/status", "DNS-to-loopback"),
-    ("http://100.118.150.53:8000/status", "own tailscale IP"),
-]:
-    r = reg.execute("web_fetch", {"url": url})
-    check(f"web_fetch blocked: {why}", "not allowed" in r or "Error" in r, r[:70])
 
 print()
 print("RESULT:", "ALL CLEAR" if not fails else f"{len(fails)} HOLE(S): {fails}")

@@ -91,7 +91,7 @@ menu (⋮) → **Install app**. Away from home, see [Remote Access](#-remote-acc
 **Agents that actually do things** — not chat windows. Each task is a workspace where the agent can inspect real files, write code, and run commands to finish the job.
 
 - **Token streaming everywhere:** responses stream live into the dashboard and phone, word by word — no spinners.
-- **Real tools, real guardrails:** `list_files`, `read_file`, `search_files` (grep), `write_file`, `run_command`, `web_search`, `web_fetch` — file tools sandboxed to folders *you* allowlist, web tools locked to the public internet (internal/private addresses refused), and sensitive actions paused until **you** click Approve.
+- **Real tools, real guardrails:** `list_files`, `read_file`, `search_files` (grep), `write_file`, `run_command` — file tools sandboxed to folders *you* allowlist, and sensitive actions paused until **you** click Approve.
 - **You're mission control:** STOP cancels mid-generation (aborting the model mid-answer, not after it finishes), FINISH archives, DELETE removes — from the dashboard or your phone.
 - **The model stays itself:** no confining persona — ask "what can you do?" and the model answers with its full capabilities, tools as optional extras. Model picker labels show which models are agent-capable (`· no tools` = plain chat only); qwen3.5 and online models handle agent tasks, gemma/codeqwen are great fast chat models.
 - **Real-time by construction:** a WebSocket stream pushes every token, tool call, status change, and approval request to all connected clients instantly.
@@ -157,7 +157,7 @@ Three layers, all enforced server-side:
 1. **Path sandbox:** every file path is validated against an allowlist (`backend/allowed_dirs.txt` — one folder per line, see `allowed_dirs.example.txt`; by default only the project folder itself) before anything touches disk. `..\` tricks and outside paths are refused.
 2. **Secrets blocked:** `.env`-style files can't be read *or* written by the agent — anywhere.
 3. **Human-in-the-loop:** `write_file` and `run_command` pause execution and wait for Approve/Deny — from the dashboard, the phone, or the API. No approval, no execution.
-4. **Web tools stay outside:** `web_search` (DuckDuckGo, Bing fallback) and `web_fetch` are read-only, keyless, and refuse internal/private addresses (localhost, LAN, Tailscale) — your PC can't be probed through them, and only the query text ever leaves the machine.
+4. **No web access for the agent (for now):** web tools were removed intentionally — the agent cannot reach the internet. (They live in git history and can be restored later.)
 5. **Session journals:** every task writes a plain-text log to `backend/sessions/` (created, messages, tool calls, statuses) — deleted automatically with the task, gitignored, a few KB each.
 
 ---
