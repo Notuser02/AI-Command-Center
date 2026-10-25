@@ -14,6 +14,7 @@ from pydantic import BaseModel
 
 from database import SettingsRepository
 from providers.online import OnlineProvider
+from agent.tools import _is_blocked_host, _host_resolves_private
 
 router = APIRouter(prefix="/online", tags=["online"])
 
@@ -22,6 +23,21 @@ repo = SettingsRepository()
 KEY_BASE = "online_base_url"
 KEY_API = "online_api_key"
 KEY_MODEL = "online_default_model"
+
+
+def _validate_public_base_url(base_url: str) -> None:
+    """The backend will fetch {base_url}/models — so the base URL must be a
+    PUBLIC host. Otherwise this endpoint becomes an internal-network probe
+    (SSRF): e.g. base_url=http://127.0.0.1:11434 would let a caller query
+    Ollama or any other local service through us."""
+    host = base_url.split("://", 1)[-1].split("/", 1)[0].split(":", 1)[0]
+    host = host.strip("[]")
+    if _is_blocked_host(host) or _host_resolves_private(host):
+        raise HTTPException(
+            status_code=400,
+            detail="Base URL must point at a public internet service — internal/"
+                   "private addresses are not allowed."
+        )
 
 
 class OnlineConfigIn(BaseModel):
@@ -64,6 +80,10 @@ def save_config(config_in: OnlineConfigIn):
     base_url = (config_in.base_url or "").strip().rstrip("/") or current.base_url
     api_key = (config_in.api_key or "").strip() or current.api_key
     default_model = (config_in.default_model or "").strip() or current.model
+
+    # The backend fetches {base_url}/models — public hosts only (no SSRF)
+    if (config_in.base_url or "").strip():
+        _validate_public_base_url(base_url)
 
     candidate = OnlineProvider(base_url=base_url, api_key=api_key, model=default_model)
 

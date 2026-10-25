@@ -18,16 +18,15 @@ cfg = requests.get(f"{HTTP}/online/config", timeout=10).json()
 assert set(cfg.keys()) == {"base_url", "api_key_set", "default_model"}, cfg
 print("PASS: GET /online/config returns only safe fields:", cfg)
 
-# ── 2. POST with an unreachable base URL → clean 400, NOTHING saved ──
+# ── 2. POST with an internal base URL → 400 (SSRF guard), NOTHING saved ──
 r = requests.post(f"{HTTP}/online/config", json={
     "base_url": "http://127.0.0.1:9/v1",
     "api_key": "sk-test-fake-key",
 }, timeout=30)
 assert r.status_code == 400, (r.status_code, r.text)
-assert "Could not reach" in r.json()["detail"] or "timed out" in r.json()["detail"], r.text
 cfg = requests.get(f"{HTTP}/online/config", timeout=10).json()
 assert cfg["api_key_set"] is False and cfg["base_url"] == "", "failed save must not persist!"
-print("PASS: unreachable base URL → 400, and nothing was saved")
+print("PASS: internal base URL → 400, and nothing was saved")
 
 # ── 3. POST with an invalid key against a real service → 400 invalid key ──
 r = requests.post(f"{HTTP}/online/config", json={

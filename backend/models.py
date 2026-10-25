@@ -1,7 +1,7 @@
 from enum import Enum
 from datetime import datetime
 from typing import Optional, List
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class TaskStatus(str, Enum):
@@ -14,14 +14,14 @@ class TaskStatus(str, Enum):
 
 
 class TaskCreate(BaseModel):
-    name: Optional[str] = None      # optional title; blank → UI shows TASK-<id>
-    task: str = ""                  # description / context for the agent
+    name: Optional[str] = Field(default=None, max_length=80)   # blank → UI shows TASK-<id>
+    task: str = Field(default="", max_length=2000)             # description / agent context
     provider: str = "local"
     model: Optional[str] = "qwen3.5:9b"
 
 
 class MessageCreate(BaseModel):
-    message: str
+    message: str = Field(min_length=1, max_length=8000)
 
 
 class TaskResponse(BaseModel):

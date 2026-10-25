@@ -1455,7 +1455,7 @@
       }
 
       bubble.innerHTML = `
-        <div class="bubble-author">${title}</div>
+        <div class="bubble-author">${escapeHtml(title)}</div>
         <div class="bubble-text" style="color: #b0c4de;">${escapeHtml(text)}</div>
       `;
 

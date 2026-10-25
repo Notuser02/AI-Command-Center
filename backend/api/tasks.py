@@ -71,7 +71,7 @@ def create_task(task_in: TaskCreate):
 @router.get("/tasks", response_model=list[TaskResponse])
 def list_tasks(limit: int = 50):
     repo = TaskRepository()
-    tasks = repo.get_all(limit)
+    tasks = repo.get_all(min(max(limit, 1), 200))
     return [_task_to_response(t) for t in tasks]
 
 
