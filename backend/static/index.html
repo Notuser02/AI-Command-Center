@@ -751,6 +751,9 @@
             </select>
             <button id="btnRefreshModels" class="btn-action" title="Re-fetch the model list" style="flex-shrink: 0;">↻</button>
           </div>
+          <div id="toolsHint" style="display: none; font-size: 10px; color: var(--text-dim); margin-top: 4px;">
+            Models marked "no tools" answer from memory only — for web_search / file access, pick another model.
+          </div>
         </div>
       </div>
 
@@ -874,6 +877,7 @@
     const modalModelSelect = document.getElementById('modalModelSelect');
 
     let availableModels = { local: ['qwen3.5:9b'], online: [] };
+    let toolsByModel = {};   // model name -> supports tool calling (from /models/detail)
 
     async function loadModels() {
       try {
@@ -881,6 +885,14 @@
         if (res.ok) {
           availableModels = await res.json();
           updateModelDropdown();
+        }
+        const det = await fetch(`${HTTP_BASE}/models/detail`);
+        if (det.ok) {
+          const detail = await det.json();
+          toolsByModel = {};
+          (detail.local || []).forEach(m => { toolsByModel[m.name] = m.tools; });
+          (detail.online || []).forEach(m => { toolsByModel[m.name] = m.tools; });
+          updateModelDropdown();  // re-render with the suffixes
         }
       } catch (e) {
         console.error('Failed to load models:', e);
@@ -895,13 +907,15 @@
       list.forEach(m => {
         const opt = document.createElement('option');
         opt.value = m;
-        opt.textContent = m;
+        opt.textContent = m + (toolsByModel[m] === false ? '  · no tools' : '');
         modalModelSelect.appendChild(opt);
       });
       // Keep the user's pick across a refresh when it's still installed
       if (previous && list.includes(previous)) {
         modalModelSelect.value = previous;
       }
+      const hint = document.getElementById('toolsHint');
+      if (hint) hint.style.display = list.some(m => toolsByModel[m] === false) ? 'block' : 'none';
     }
 
     modalProviderSelect.addEventListener('change', updateModelDropdown);

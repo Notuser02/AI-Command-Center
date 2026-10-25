@@ -45,6 +45,12 @@ export const api = {
     ]),
 
   getModels: () => request<ModelsResponse>('/models'),
+  getModelsDetail: () =>
+    request<{
+      local: { name: string; tools: boolean }[];
+      online: { name: string; tools: boolean }[];
+      default: { local: string; online: string };
+    }>('/models/detail'),
 
   listTasks: (limit = 50) => request<Task[]>(`/tasks?limit=${limit}`),
   getTask: (id: number) => request<Task>(`/tasks/${id}`),

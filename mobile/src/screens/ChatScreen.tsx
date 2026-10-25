@@ -29,6 +29,7 @@ export default function ChatScreen() {
 
   const [task, setTask] = useState<Task | null>(null);
   const [models, setModels] = useState<ModelsResponse | null>(null);
+  const [toolsByModel, setToolsByModel] = useState<Record<string, boolean>>({});
   const [model, setModel] = useState(defModel);
   const [chatProvider, setChatProvider] = useState('local');
   const [input, setInput] = useState('');
@@ -82,6 +83,12 @@ export default function ChatScreen() {
   useEffect(() => {
     ensureChatTask(chatProvider);
     api.getModels().then(setModels).catch(() => {});
+    api.getModelsDetail().then((detail) => {
+      const map: Record<string, boolean> = {};
+      (detail.local || []).forEach((m) => { map[m.name] = m.tools; });
+      (detail.online || []).forEach((m) => { map[m.name] = m.tools; });
+      setToolsByModel(map);
+    }).catch(() => {});
   }, [ensureChatTask, chatProvider]);
 
   const load = useCallback(async () => {
@@ -178,7 +185,9 @@ export default function ChatScreen() {
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, flex: 1 }}>
           {modelList.map((m) => (
             <Pressable key={m} onPress={() => setModel(m)} style={[styles.chip, model === m && styles.chipActive]}>
-              <Text style={[styles.chipText, model === m && styles.chipTextActive]} numberOfLines={1}>{m}</Text>
+              <Text style={[styles.chipText, model === m && styles.chipTextActive]} numberOfLines={1}>
+                {m}{toolsByModel[m] === false ? ' · no tools' : ''}
+              </Text>
             </Pressable>
           ))}
           {modelList.length === 0 && (
@@ -189,6 +198,11 @@ export default function ChatScreen() {
           <Text style={styles.newChatText}>+ NEW</Text>
         </Pressable>
       </View>
+      {modelList.some((m) => toolsByModel[m] === false) ? (
+        <Text style={styles.toolsHint}>
+          "no tools" models answer from memory only — for web_search / files pick another.
+        </Text>
+      ) : null}
 
       <ScrollView ref={scrollRef} style={styles.stream} contentContainerStyle={{ padding: 12 }}>
         {/* Welcome state — the AI Agent Workspace branding, like the PC home screen */}
@@ -276,6 +290,11 @@ const styles = StyleSheet.create({
   emptyHint: { color: colors.dim, fontSize: 11, textAlign: 'center' },
   rowCenter: { flexDirection: 'row', alignItems: 'center' },
   dim: { color: colors.dim, fontSize: 12 },
+  toolsHint: {
+    color: colors.dim, fontSize: 10,
+    paddingHorizontal: 10, paddingVertical: 3,
+    backgroundColor: colors.panel, borderBottomWidth: 1, borderBottomColor: colors.border,
+  },
   errorBar: { color: colors.red, fontSize: 11, paddingHorizontal: 14, paddingVertical: 4 },
   inputRow: {
     flexDirection: 'row',

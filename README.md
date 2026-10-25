@@ -93,7 +93,7 @@ menu (⋮) → **Install app**. Away from home, see [Remote Access](#-remote-acc
 - **Token streaming everywhere:** responses stream live into the dashboard and phone, word by word — no spinners.
 - **Real tools, real guardrails:** `list_files`, `read_file`, `search_files` (grep), `write_file`, `run_command`, `web_search`, `web_fetch` — file tools sandboxed to folders *you* allowlist, web tools locked to the public internet (internal/private addresses refused), and sensitive actions paused until **you** click Approve.
 - **You're mission control:** STOP cancels mid-generation (aborting the model mid-answer, not after it finishes), FINISH archives, DELETE removes — from the dashboard or your phone.
-- **The model stays itself:** no confining persona — ask "what can you do?" and the model answers with its full capabilities, tools as optional extras.
+- **The model stays itself:** no confining persona — ask "what can you do?" and the model answers with its full capabilities, tools as optional extras. Model picker labels show which models are agent-capable (`· no tools` = plain chat only); qwen3.5 and online models handle agent tasks, gemma/codeqwen are great fast chat models.
 - **Real-time by construction:** a WebSocket stream pushes every token, tool call, status change, and approval request to all connected clients instantly.
 - **Switch tasks mid-response:** streams buffer per-task, so flipping between running agents and back loses nothing.
 

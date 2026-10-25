@@ -78,11 +78,18 @@ export function NewTaskScreen({ navigation }: NativeStackScreenProps<RootStackPa
   const [provider, setProvider] = useState(defProvider);
   const [model, setModel] = useState(defModel);
   const [models, setModels] = useState<ModelsResponse | null>(null);
+  const [toolsByModel, setToolsByModel] = useState<Record<string, boolean>>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     api.getModels().then(setModels).catch(() => {});
+    api.getModelsDetail().then((detail) => {
+      const map: Record<string, boolean> = {};
+      (detail.local || []).forEach((m) => { map[m.name] = m.tools; });
+      (detail.online || []).forEach((m) => { map[m.name] = m.tools; });
+      setToolsByModel(map);
+    }).catch(() => {});
   }, []);
 
   const modelList = (provider === 'local' ? models?.local : models?.online) || [];
@@ -151,10 +158,17 @@ export function NewTaskScreen({ navigation }: NativeStackScreenProps<RootStackPa
         {modelList.length === 0 && <Text style={styles.emptySmall}>No models listed</Text>}
         {modelList.map((m) => (
           <Pressable key={m} onPress={() => setModel(m)} style={[styles.chip, model === m && styles.chipActive]}>
-            <Text style={[styles.chipText, model === m && styles.chipTextActive]}>{m}</Text>
+            <Text style={[styles.chipText, model === m && styles.chipTextActive]}>
+              {m}{toolsByModel[m] === false ? ' · no tools' : ''}
+            </Text>
           </Pressable>
         ))}
       </View>
+      {modelList.some((m) => toolsByModel[m] === false) ? (
+        <Text style={styles.hint}>
+          Models marked "no tools" answer from memory only — for web_search / file access, pick another model.
+        </Text>
+      ) : null}
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
@@ -185,6 +199,7 @@ const styles = StyleSheet.create({
   newBtnText: { color: colors.cyan, fontWeight: '700', fontSize: 12 },
   empty: { color: colors.dim, fontSize: 13, textAlign: 'center', marginTop: 40, lineHeight: 20 },
   emptySmall: { color: colors.dim, fontSize: 12 },
+  hint: { color: colors.dim, fontSize: 11, lineHeight: 16 },
   label: { color: colors.text, fontSize: 12 },
   input: {
     backgroundColor: colors.inputBg,
