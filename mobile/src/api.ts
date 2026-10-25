@@ -1,5 +1,6 @@
 // Thin HTTP client over the EXISTING backend endpoints — nothing new on the server.
 
+import { Platform } from 'react-native';
 import type { Approval, ModelsResponse, Task } from './types';
 
 // The phone must reach the PC over the network — never 'localhost', which
@@ -9,7 +10,18 @@ import type { Approval, ModelsResponse, Task } from './types';
 // this entirely and auto-detects its server.
 export const DEFAULT_SERVER_URL = 'http://192.168.1.100:8000';
 
-let baseUrl = DEFAULT_SERVER_URL;
+// On web the backend is simply wherever this page came from — known
+// synchronously, so first-render fetches (which race settings hydration)
+// already target the right server.
+function initialBaseUrl(): string {
+  if (Platform.OS === 'web' && typeof window !== 'undefined') {
+    const origin = window.location?.origin;
+    if (origin && origin.startsWith('http')) return origin;
+  }
+  return DEFAULT_SERVER_URL;
+}
+
+let baseUrl = initialBaseUrl();
 
 export function setBaseUrl(url: string) {
   baseUrl = (url || '').trim().replace(/\/+$/, '');
