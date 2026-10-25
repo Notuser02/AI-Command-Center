@@ -13,7 +13,9 @@ you explicitly permit.
 import os
 import re
 import html as html_lib
+import ipaddress
 import json
+import socket
 import subprocess
 from urllib.parse import unquote, urlparse, parse_qs
 
@@ -24,7 +26,7 @@ import requests
 MAX_FILE_SIZE = 100_000  # 100 KB — prevents reading huge files
 
 # Directories/files to hide from list_files (noise, not useful to agent)
-IGNORED_NAMES = {"venv", "__pycache__", ".git", "node_modules", ".env"}
+IGNORED_NAMES = {"venv", "__pycache__", ".git", "node_modules", ".env", "sessions"}
 
 # search_files caps
 MAX_SEARCH_MATCHES = 50
@@ -35,31 +37,92 @@ MAX_WEB_TEXT = 15_000       # characters handed to the model
 MAX_WEB_DOWNLOAD = 200_000  # bytes read from the network
 WEB_TIMEOUT = (10, 20)      # (connect, read) seconds
 
-# Hosts the agent may never fetch (SSRF protection): localhost, private LAN
-# ranges, the Tailscale CGNAT range, and tailnet domains.
-def _is_blocked_host(hostname: str) -> bool:
-    host = (hostname or "").strip().lower().rstrip(".")
-    if host in ("localhost", "") or host.endswith(".ts.net") or host.endswith(".local"):
+# Hosts the agent may never fetch (SSRF protection). _is_blocked_host is the
+# fast string check on the hostname itself; _host_resolves_private additionally
+# resolves DNS and checks every returned IP — together they catch IP-encoding
+# tricks (decimal/hex/short forms), IPv4-mapped IPv6, and DNS names that
+# resolve to private addresses (nip.io / localtest.me style).
+def _ip_is_private(ip: str) -> bool:
+    try:
+        addr = ipaddress.ip_address(ip)
+    except ValueError:
+        return True  # unparseable = treat as unsafe
+    if addr.is_private or addr.is_loopback or addr.is_link_local \
+            or addr.is_reserved or addr.is_multicast or addr.is_unspecified:
         return True
-    if host in ("0.0.0.0", "::1", "[::1]"):
-        return True
-    parts = host.split(".")
-    if len(parts) == 4 and all(p.isdigit() for p in parts):
-        o1, o2 = int(parts[0]), int(parts[1])
-        if o1 in (10, 127, 0):
-            return True
-        if o1 == 192 and o2 == 168:
-            return True
-        if o1 == 172 and 16 <= o2 <= 31:
-            return True
-        if o1 == 100 and 64 <= o2 <= 127:
+    if isinstance(addr, ipaddress.IPv6Address) and addr.ipv4_mapped:
+        return _ip_is_private(str(addr.ipv4_mapped))
+    if isinstance(addr, ipaddress.IPv4Address):
+        o1, o2 = str(addr).split(".")[:2]
+        if o1 == "100" and 64 <= int(o2) <= 127:
             return True  # Tailscale CGNAT range
     return False
 
+
+def _is_blocked_host(hostname: str) -> bool:
+    host = (hostname or "").strip().lower().rstrip(".")
+    if not host:
+        return True
+    if host.startswith("[") and host.endswith("]"):
+        host = host[1:-1]
+
+    # IPv4-mapped IPv6 written as plain string
+    if host.startswith("::ffff:"):
+        return _ip_is_private(host.split(":", 1)[1]) or True
+
+    # DNS / keyword names
+    if host == "localhost" or host.endswith(".ts.net") or host.endswith(".local") \
+            or host.endswith(".internal"):
+        return True
+
+    # Numeric IP encodings: decimal (2130706433), hex (0x7f000001),
+    # short dotted (127.1) — normalize to the address they mean.
+    try:
+        addr = ipaddress.ip_address(host)
+        return _ip_is_private(str(addr))
+    except ValueError:
+        pass
+
+    parts = host.split(".")
+    if len(parts) <= 4 and all(p and (p.isdigit() or (p.startswith("0x") and len(p) > 2)) for p in parts):
+        try:
+            if len(parts) == 1:
+                n = int(parts[0], 0)  # honors 0x prefix
+                dotted = ipaddress.ip_address(n)
+                return _ip_is_private(str(dotted))
+            if len(parts) in (2, 3) and "0x" not in host:
+                # short forms like 127.1 → 127.0.0.1
+                nums = [int(p) for p in parts]
+                if all(n <= 255 for n in nums):
+                    while len(nums) < 4:
+                        nums.insert(len(nums) - 1, 0)
+                    dotted = ".".join(map(str, nums))
+                    return _ip_is_private(dotted)
+        except (ValueError, OverflowError):
+            pass
+
+    return False
+
+
+def _host_resolves_private(hostname: str) -> bool:
+    """Resolve the hostname and check EVERY returned IP. This is the
+    authoritative check — it catches DNS names that point at private
+    addresses (nip.io, localtest.me, internal hostnames)."""
+    try:
+        infos = socket.getaddrinfo(hostname.strip("[]"), None)
+    except (OSError, socket.gaierror):
+        return True  # unresolvable = unusable, treat as blocked
+    for info in infos:
+        ip = info[4][0]
+        if _ip_is_private(ip):
+            return True
+    return False
+
 # Files the agent may never read OR write, even inside allowed dirs.
-# These hold secrets (.env contains API keys) — hiding them from listings
-# is not enough, the agent must not be able to open them directly either.
+# .env* hold secrets; tasks.db* holds every conversation; session journals
+# (backend/sessions/) are blocked by directory below.
 SENSITIVE_FILE_PREFIXES = (".env",)
+SENSITIVE_FILE_NAMES = {"tasks.db", "tasks.db-journal", "tasks.db-wal", "tasks.db-shm"}
 
 
 class ToolRegistry:
@@ -116,14 +179,21 @@ class ToolRegistry:
 
     def _validate_sensitive(self, abs_path):
         """
-        Reject secret files (.env etc.) even though they sit inside the
-        allowed directories. list_files hides them, but without this check
-        the agent could still open them by guessing the path.
+        Reject secret files (.env etc.) and internal data stores (tasks.db,
+        session journals) even though they sit inside the allowed directories.
+        list_files hides them, but without this check the agent could still
+        open them by guessing the path.
         """
         name = os.path.basename(abs_path).lower()
-        if name.startswith(SENSITIVE_FILE_PREFIXES):
+        if name.startswith(SENSITIVE_FILE_PREFIXES) or name in SENSITIVE_FILE_NAMES:
             raise PermissionError(
                 f"Access denied: '{name}' is a sensitive file the agent may not touch."
+            )
+        # session journals live in a sessions/ directory — block by path
+        norm = abs_path.lower().replace("/", os.sep)
+        if f"{os.sep}sessions{os.sep}" in norm:
+            raise PermissionError(
+                "Access denied: session journals are internal records the agent may not read."
             )
         return abs_path
 
@@ -376,7 +446,7 @@ class ToolRegistry:
             if not current.startswith(("http://", "https://")):
                 return "Error: only http:// and https:// URLs are allowed."
             host = urlparse(current).hostname or ""
-            if _is_blocked_host(host):
+            if _is_blocked_host(host) or _host_resolves_private(host):
                 return f"Error: fetching internal/private hosts ('{host}') is not allowed."
 
             try:
