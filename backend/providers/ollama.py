@@ -219,14 +219,10 @@ class OllamaProvider:
     def _merge_tool_call_fragments(accumulated, fragments):
         """
         Streamed tool calls arrive in PIECES. Two formats exist depending
-        on Ollama version:
-
-          New:  each fragment carries an "index" telling us which call it
-                belongs to (name pieces and argument pieces arrive separately).
-          Old:  complete tool_calls arrive in one chunk with no index.
-
-        This merger handles both: names concatenate, argument keys fill in
-        (string values may themselves arrive split across chunks).
+        on Ollama version, and some versions re-send the complete name in
+        every fragment of the same call — so name assembly must dedupe
+        (prefix/overlap-aware) instead of blindly concatenating, which
+        produced corrupted names like 'web_searchweb_search'.
         """
         for frag in fragments:
             func = frag.get("function") or {}
@@ -251,7 +247,15 @@ class OllamaProvider:
             target = accumulated[index]["function"]
 
             if func.get("name"):
-                target["name"] = (target.get("name") or "") + func["name"]
+                fname = func["name"]
+                existing = target.get("name") or ""
+                if not existing:
+                    target["name"] = fname
+                elif fname.startswith(existing) or existing.startswith(fname):
+                    # same name re-sent (possibly split) — keep the longer form
+                    target["name"] = fname if len(fname) > len(existing) else existing
+                else:
+                    target["name"] = existing + fname
 
             args = func.get("arguments")
             if args:

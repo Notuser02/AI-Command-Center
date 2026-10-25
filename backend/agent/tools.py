@@ -344,8 +344,9 @@ class ToolRegistry:
     def _web_search(self, query):
         """
         Keyless web search. Tries DuckDuckGo's lite endpoint first; some
-        networks block it, so Bing's HTML page is the fallback. Returns
-        the top results as 'title — url' lines.
+        networks block it, so Bing's HTML page is the fallback. Returns the
+        top results with title, url AND snippet text — snippets matter:
+        without them the model only sees page titles and guesses.
         """
         q = (query or "").strip()[:400]
         if not q:
@@ -366,14 +367,7 @@ class ToolRegistry:
                 timeout=WEB_TIMEOUT,
             )
             if resp.status_code == 200:
-                anchors = re.findall(
-                    r'<a[^>]*class="result-link"[^>]*href="([^"]+)"[^>]*>(.*?)</a>',
-                    resp.text, re.S)
-                for href, title_html in anchors:
-                    title = html_lib.unescape(re.sub(r"<[^>]+>", "", title_html)).strip()
-                    url = self._unwrap_ddg_link(href)
-                    if title and url:
-                        results.append(f"{title} — {url}")
+                results = self._parse_ddg(resp.text)
                 if results:
                     engines.append("duckduckgo")
         except requests.RequestException:
@@ -389,24 +383,59 @@ class ToolRegistry:
                     timeout=WEB_TIMEOUT,
                 )
                 if resp.status_code == 200:
-                    anchors = re.findall(
-                        r'<h2><a[^>]*href="(http[^"]+)"[^>]*>(.*?)</a></h2>',
-                        resp.text, re.S)
-                    for href, title_html in anchors:
-                        title = html_lib.unescape(re.sub(r"<[^>]+>", "", title_html)).strip()
-                        if title and href:
-                            clean_href = html_lib.unescape(href)  # &amp; → & so the u= param parses
-                            results.append(f"{title} — {self._unwrap_bing_link(clean_href)}")
+                    results = self._parse_bing(resp.text)
                     if results:
                         engines.append("bing")
             except requests.RequestException:
                 pass
 
         if not results:
-            net_note = " (network may be blocking search engines)" if engines == [] else ""
-            return f"No results for '{q}'{net_note}."
+            return f"No results for '{q}' (network may be blocking search engines)."
 
-        return f"[via {' + '.join(engines)}]\n" + "\n".join(results[:8])
+        out = [f"[via {' + '.join(engines)}]"]
+        for i, r in enumerate(results[:8], start=1):
+            out.append(f"{i}. {r['title']}\n   {r['url']}")
+            if r.get("snippet"):
+                out.append(f"   {r['snippet'][:220]}")
+        return "\n".join(out)
+
+    @staticmethod
+    def _clean_html(s):
+        return html_lib.unescape(re.sub(r"<[^>]+>", "", s or "")).strip()
+
+    def _parse_ddg(self, page):
+        """DuckDuckGo lite: result rows contain a result-link anchor and a
+        result-snippet cell. Returns [{title, url, snippet}]."""
+        results = []
+        chunks = page.split('class="result-link"')
+        for chunk in chunks[1:]:
+            m = re.search(r'href="([^"]+)"[^>]*>(.*?)</a>', chunk, re.S)
+            if not m:
+                continue
+            title = self._clean_html(m.group(2))
+            url = self._unwrap_ddg_link(m.group(1))
+            snip = re.search(r'class="result-snippet"[^>]*>(.*?)</td>', chunk, re.S)
+            snippet = self._clean_html(snip.group(1)) if snip else ""
+            if title and url:
+                results.append({"title": title, "url": url, "snippet": snippet})
+        return results
+
+    def _parse_bing(self, page):
+        """Bing HTML: b_algo list items contain h2>a (title/url) and a
+        snippet paragraph. Returns [{title, url, snippet}]."""
+        results = []
+        chunks = page.split('<li class="b_algo"')
+        for chunk in chunks[1:]:
+            m = re.search(r'<h2[^>]*><a[^>]*href="(http[^"]+)"[^>]*>(.*?)</a>', chunk, re.S)
+            if not m:
+                continue
+            title = self._clean_html(m.group(2))
+            url = self._unwrap_bing_link(html_lib.unescape(m.group(1)))
+            snip = re.search(r'<p[^>]*>(.*?)</p>', chunk, re.S)
+            snippet = self._clean_html(snip.group(1)) if snip else ""
+            if title and url:
+                results.append({"title": title, "url": url, "snippet": snippet})
+        return results
 
     @staticmethod
     def _unwrap_ddg_link(href):
