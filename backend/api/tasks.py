@@ -56,6 +56,12 @@ def create_task(task_in: TaskCreate):
     repo = TaskRepository()
     task = repo.create(task_in.task, task_in.provider, model=task_in.model,
                        name=(task_in.name or None))
+    # Session journal: one plain-text file per task (see services/session_logger.py)
+    from services.session_logger import log_event
+    log_event(task.id, task.name,
+              f"TASK CREATED: {task.name or ('TASK-' + str(task.id))} | "
+              f"description: {task.task or '(none)'} | "
+              f"provider: {task.provider} | model: {task.model}")
     resp = _task_to_response(task)
     if task_service and task_service.connection_manager:
         task_service.connection_manager.broadcast("task_created", resp.model_dump())

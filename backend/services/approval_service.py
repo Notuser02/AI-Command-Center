@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from database import ApprovalRepository, Approval
 from models import ApprovalStatus
 from agent.agent import CancellationError
+from services.session_logger import log_event
 
 
 @dataclass
@@ -70,6 +71,8 @@ class ApprovalService:
                 "status": approval.status,
                 "created_at": str(approval.created_at)
             })
+
+        log_event(task_id, "", f"APPROVAL REQUESTED: {tool_name} {arguments}")
 
         return approval
 
@@ -128,6 +131,7 @@ class ApprovalService:
 
         new_status = ApprovalStatus.APPROVED if approved else ApprovalStatus.DENIED
         self.repo.update_status(approval_id, new_status)
+        log_event(app.task_id, "", f"APPROVAL {new_status.value.upper()}: {app.tool_name}")
 
         if self.connection_manager:
             self.connection_manager.broadcast("approval_resolved", {

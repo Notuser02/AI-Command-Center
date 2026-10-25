@@ -1,3 +1,4 @@
+import json
 import asyncio
 import threading
 from typing import Dict, Optional, Callable, Any
@@ -13,6 +14,7 @@ import os
 
 
 from services.approval_service import ApprovalService
+from services.session_logger import log_event, delete_session
 
 
 MAX_CONCURRENT_TASKS = 2
@@ -65,11 +67,25 @@ class TaskService:
                     "task_id": task_id,
                     "log": logs[-1]
                 })
+            # session journal: one line per agent step (never per token)
+            if logs:
+                entry = logs[-1]
+                etype = entry.get("type")
+                if etype == "tool_call":
+                    log_event(task_id, agent.task_name, f"TOOL CALL: {entry.get('tool')} {json.dumps(entry.get('arguments', {}), default=str)[:300]}")
+                elif etype == "tool_result":
+                    log_event(task_id, agent.task_name, f"TOOL RESULT ({entry.get('tool')}): {entry.get('result', '')}")
+                elif etype == "approval_required":
+                    log_event(task_id, agent.task_name, f"APPROVAL REQUIRED: {entry.get('tool')}")
+                elif etype == "approval_resolved":
+                    log_event(task_id, agent.task_name, f"APPROVAL {entry.get('status', '').upper()}: {entry.get('message', '')}")
+                elif etype == "final_answer":
+                    log_event(task_id, agent.task_name, "AGENT FINAL ANSWER:")
 
         def on_token(delta: str):
             # Live token streaming — broadcast only, never written to the
-            # database (that would mean 50+ writes/second during generation).
-            # The full text is persisted once when the turn finishes.
+            # database or session log (that would mean 50+ writes/second
+            # during generation; the full text is persisted once at the end).
             if self.connection_manager:
                 self.connection_manager.broadcast("task_token", {
                     "task_id": task_id,
@@ -83,6 +99,8 @@ class TaskService:
                 self.repo.update_result(task_id, result)
                 # Keep task in IDLE status so user can continue sending messages to it!
                 self.repo.update_status(task_id, TaskStatus.IDLE)
+                log_event(task_id, agent.task_name, f"AGENT ANSWER: {result}")
+                log_event(task_id, agent.task_name, "STATUS: idle")
                 if self.connection_manager:
                     self.connection_manager.broadcast("task_message", {
                         "task_id": task_id,
@@ -96,6 +114,7 @@ class TaskService:
                     })
             except CancellationError:
                 self.repo.update_status(task_id, TaskStatus.CANCELLED)
+                log_event(task_id, agent.task_name, "STATUS: cancelled (stopped by user)")
                 if self.connection_manager:
                     self.connection_manager.broadcast("task_status_changed", {
                         "task_id": task_id,
@@ -104,6 +123,7 @@ class TaskService:
             except Exception as e:
                 self.repo.update_result(task_id, f"Error: {e}")
                 self.repo.update_status(task_id, TaskStatus.FAILED)
+                log_event(task_id, agent.task_name, f"STATUS: failed — {e}")
                 if self.connection_manager:
                     self.connection_manager.broadcast("task_status_changed", {
                         "task_id": task_id,
@@ -128,6 +148,8 @@ class TaskService:
         await self.semaphore.acquire()
 
         self.repo.update_status(task_id, TaskStatus.RUNNING)
+        log_event(task_id, task.name, "STATUS: running — task started")
+        log_event(task_id, task.name, f"INSTRUCTION: {task.task}")
         if self.connection_manager:
             self.connection_manager.broadcast("task_status_changed", {
                 "task_id": task_id,
@@ -140,7 +162,8 @@ class TaskService:
             tool_registry=self.tool_registry,
             approval_service=self.approval_service,
             task_id=task_id,
-            task_description=(task.task or None)
+            task_description=(task.task or None),
+            task_name=(task.name or f"TASK-{task.id}")
         )
 
         with self._lock:
@@ -173,6 +196,8 @@ class TaskService:
 
         await self.semaphore.acquire()
         self.repo.update_status(task_id, TaskStatus.RUNNING)
+        log_event(task_id, task.name, f"USER MESSAGE: {message}")
+        log_event(task_id, task.name, "STATUS: running")
         if self.connection_manager:
             self.connection_manager.broadcast("task_status_changed", {
                 "task_id": task_id,
@@ -185,7 +210,8 @@ class TaskService:
             tool_registry=self.tool_registry,
             approval_service=self.approval_service,
             task_id=task_id,
-            task_description=(task.task or None)
+            task_description=(task.task or None),
+            task_name=(task.name or f"TASK-{task.id}")
         )
 
         with self._lock:
@@ -207,25 +233,32 @@ class TaskService:
         if self.is_task_running(task_id):
             return False
 
+        task = self.repo.get(task_id)
         success = self.repo.update_status(task_id, TaskStatus.COMPLETED)
-        if success and self.connection_manager:
-            self.connection_manager.broadcast("task_status_changed", {
-                "task_id": task_id,
-                "status": TaskStatus.COMPLETED.value
-            })
+        if success:
+            log_event(task_id, task.name if task else "", "STATUS: completed (archived by user)")
+            if self.connection_manager:
+                self.connection_manager.broadcast("task_status_changed", {
+                    "task_id": task_id,
+                    "status": TaskStatus.COMPLETED.value
+                })
         return success
 
     def delete_task(self, task_id: int) -> bool:
         """
-        Permanently delete a task, its message history, and its approvals.
-        Refuses while the task is executing (stop it first) — deleting a
-        running agent would leave its worker thread writing to a gone row.
+        Permanently delete a task, its message history, approvals, and its
+        session log file. Refuses while the task is executing (stop it
+        first) — deleting a running agent would leave its worker thread
+        writing to a gone row.
         """
         if self.is_task_running(task_id):
             return False
 
+        task = self.repo.get(task_id)
         if not self.repo.delete(task_id):
             return False
+
+        delete_session(task_id)
 
         if self.connection_manager:
             self.connection_manager.broadcast("task_deleted", {
@@ -239,6 +272,7 @@ class TaskService:
             if not running:
                 return False
             running.agent.cancel()
+        log_event(task_id, running.agent.task_name, "STOP requested by user")
         return True
 
     def get_running_count(self) -> int:

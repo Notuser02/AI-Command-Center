@@ -12,3 +12,6 @@ venv/
 
 # Personal machine config — each user creates their own
 backend/allowed_dirs.txt
+
+# Per-task session journals (local only)
+backend/sessions/

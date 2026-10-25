@@ -34,14 +34,15 @@ class CancellationError(Exception):
 class Agent:
 
     def __init__(self, provider, tool_registry=None, approval_service=None,
-                 task_id=None, task_description=None):
+                 task_id=None, task_description=None, task_name=None):
         self.provider = provider
         self.tool_registry = tool_registry
         self.approval_service = approval_service
         self.task_id = task_id
-        # Workspace description (from task creation) — shown to the LLM as
-        # context in the system prompt rather than as a user message.
+        # Workspace name/description (from task creation) — the description is
+        # shown to the LLM as context; the name is used for session logging.
         self.task_description = task_description
+        self.task_name = task_name or ""
         self.status = "idle"
         self.result = None
         self.logs = []      # step-by-step record of what the agent did
@@ -340,9 +341,10 @@ class Agent:
 
         prompt = (
             "A few workstation tools are available to you as optional extras:\n"
-            "list_files, read_file, write_file, run_command. Use one only when a\n"
-            "request genuinely benefits from touching real files or running a real\n"
-            "command — otherwise answer directly, exactly as you normally would.\n\n"
+            "list_files, read_file, search_files, write_file, run_command,\n"
+            "web_search, web_fetch. Use them only when a request genuinely benefits\n"
+            "from touching real files, running a command, or looking something up on\n"
+            "the web — otherwise answer directly, exactly as you normally would.\n\n"
             "If asked about yourself or your abilities, describe your FULL\n"
             "capabilities as a model — knowledge, reasoning, math, coding, writing,\n"
             "translation, analysis, and more. Never limit your self-description\n"
