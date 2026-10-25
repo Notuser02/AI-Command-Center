@@ -48,7 +48,12 @@ class TaskService:
         if provider_name == "local":
             return OllamaProvider(model=model or "qwen3.5:9b")
         elif provider_name == "online":
-            return NebiusProvider()
+            # The configured OpenAI-compatible service (API key set via
+            # Settings / the PC creation dialog). See api/online.py.
+            from api.online import _load_provider
+            provider = _load_provider()
+            provider.model = model or provider.model
+            return provider
         else:
             raise ValueError(f"Unknown provider: {provider_name}")
 

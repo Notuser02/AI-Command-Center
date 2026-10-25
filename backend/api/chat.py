@@ -22,15 +22,23 @@ def status():
 
 @router.get("/models")
 def list_models():
-    """Return all available models for both local (Ollama) and online providers."""
+    """Return all available models: local (Ollama, live) and online
+    (live from the configured OpenAI-compatible service, else empty)."""
     local_models = OllamaProvider.list_models()
-    online_models = ["meta-llama/Meta-Llama-3.1-70B-Instruct"]
+    online_models = []
+    try:
+        from api.online import _load_provider
+        provider = _load_provider()
+        if provider.is_configured():
+            online_models = provider.list_models()[:100]
+    except Exception:
+        online_models = []
     return {
         "local": local_models,
         "online": online_models,
         "default": {
             "local": "qwen3.5:9b",
-            "online": "meta-llama/Meta-Llama-3.1-70B-Instruct"
+            "online": online_models[0] if online_models else ""
         }
     }
 

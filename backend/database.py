@@ -59,6 +59,13 @@ def init_db():
                 resolved_at TIMESTAMP
             )
         """)
+
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS settings (
+                key TEXT PRIMARY KEY,
+                value TEXT
+            )
+        """)
         conn.commit()
 
 
@@ -228,6 +235,31 @@ class TaskRepository:
             )
             conn.commit()
             return cursor.rowcount or 0
+
+
+class SettingsRepository:
+    """Simple key/value store for runtime config (e.g. online provider
+    base URL + API key). Lives in tasks.db, which is gitignored —
+    secrets stay on this machine."""
+
+    def get(self, key: str) -> Optional[str]:
+        with get_db() as conn:
+            row = conn.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
+            return row["value"] if row else None
+
+    def set(self, key: str, value: str) -> None:
+        with get_db() as conn:
+            conn.execute(
+                "INSERT INTO settings (key, value) VALUES (?, ?) "
+                "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                (key, value)
+            )
+            conn.commit()
+
+    def delete(self, key: str) -> None:
+        with get_db() as conn:
+            conn.execute("DELETE FROM settings WHERE key = ?", (key,))
+            conn.commit()
 
 
 class Approval:

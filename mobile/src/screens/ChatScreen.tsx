@@ -30,6 +30,7 @@ export default function ChatScreen() {
   const [task, setTask] = useState<Task | null>(null);
   const [models, setModels] = useState<ModelsResponse | null>(null);
   const [model, setModel] = useState(defModel);
+  const [chatProvider, setChatProvider] = useState('local');
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -37,6 +38,8 @@ export default function ChatScreen() {
   const scrollRef = useRef<ComponentRef<typeof ScrollView>>(null);
 
   // ── Find or create the persistent "Mobile Chat" workspace ──
+  // One thread per provider (local / online), so switching provider in the
+  // chat header switches to that provider's conversation.
   // Uses a ref for the current model so switching models doesn't re-run
   // this (which would reset the user's choice).
   const modelRef = useRef(model);
@@ -44,10 +47,12 @@ export default function ChatScreen() {
     modelRef.current = model;
   }, [model]);
 
-  const ensureChatTask = useCallback(async () => {
+  const chatTaskKey = (p: string) => StorageKeys.chatTaskId + ':' + p;
+
+  const ensureChatTask = useCallback(async (provider: string) => {
     setBooting(true);
     try {
-      const saved = await loadString(StorageKeys.chatTaskId);
+      const saved = await loadString(chatTaskKey(provider));
       if (saved) {
         const t = await api.getTask(Number(saved));
         setTask(t);
@@ -60,12 +65,12 @@ export default function ChatScreen() {
     }
     try {
       const t = await api.createTask({
-        name: 'Mobile Chat',
+        name: provider === 'online' ? 'Mobile Chat (online)' : 'Mobile Chat',
         task: 'Chat thread from the mobile app.',
-        provider: defProvider,
+        provider,
         model: modelRef.current,
       });
-      await saveString(StorageKeys.chatTaskId, String(t.id));
+      await saveString(chatTaskKey(provider), String(t.id));
       setTask(t);
     } catch (e: any) {
       setError(`Could not reach backend: ${e.message}`);
@@ -75,9 +80,9 @@ export default function ChatScreen() {
   }, [defProvider, defModel]);
 
   useEffect(() => {
-    ensureChatTask();
+    ensureChatTask(chatProvider);
     api.getModels().then(setModels).catch(() => {});
-  }, [ensureChatTask]);
+  }, [ensureChatTask, chatProvider]);
 
   const load = useCallback(async () => {
     if (!task) return;
@@ -126,12 +131,12 @@ export default function ChatScreen() {
     if (!task) return;
     try {
       const t = await api.createTask({
-        name: 'Mobile Chat',
+        name: chatProvider === 'online' ? 'Mobile Chat (online)' : 'Mobile Chat',
         task: 'Chat thread from the mobile app.',
-        provider: defProvider,
+        provider: chatProvider,
         model,
       });
-      await saveString(StorageKeys.chatTaskId, String(t.id));
+      await saveString(chatTaskKey(chatProvider), String(t.id));
       setTask(t);
       refreshAll();
     } catch (e: any) {
@@ -139,7 +144,13 @@ export default function ChatScreen() {
     }
   };
 
-  const modelList = models?.local || [];
+  const modelList = (chatProvider === 'local' ? models?.local : models?.online) || [];
+
+  const switchProvider = (p: string) => {
+    setChatProvider(p);
+    const list = (p === 'local' ? models?.local : models?.online) || [];
+    if (list.length && !list.includes(model)) setModel(list[0]);
+  };
 
   if (booting) {
     return (
@@ -156,18 +167,26 @@ export default function ChatScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       keyboardVerticalOffset={90}
     >
-      {/* Chat header: model picker + new chat */}
+      {/* Chat header: provider + model pickers + new chat */}
       <View style={styles.header}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+        <Pressable onPress={() => switchProvider('local')} style={[styles.chip, chatProvider === 'local' && styles.chipActive]}>
+          <Text style={[styles.chipText, chatProvider === 'local' && styles.chipTextActive]}>Local</Text>
+        </Pressable>
+        <Pressable onPress={() => switchProvider('online')} style={[styles.chip, chatProvider === 'online' && styles.chipActive]}>
+          <Text style={[styles.chipText, chatProvider === 'online' && styles.chipTextActive]}>Online</Text>
+        </Pressable>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, flex: 1 }}>
           {modelList.map((m) => (
             <Pressable key={m} onPress={() => setModel(m)} style={[styles.chip, model === m && styles.chipActive]}>
-              <Text style={[styles.chipText, model === m && styles.chipTextActive]}>{m}</Text>
+              <Text style={[styles.chipText, model === m && styles.chipTextActive]} numberOfLines={1}>{m}</Text>
             </Pressable>
           ))}
-          {modelList.length === 0 && <Text style={styles.dim}>No models — check Settings</Text>}
+          {modelList.length === 0 && (
+            <Text style={styles.dim}>{chatProvider === 'online' ? 'No online models — add an API key in Settings' : 'No models — check Settings'}</Text>
+          )}
         </ScrollView>
         <Pressable onPress={newChat} style={styles.newChat}>
-          <Text style={styles.newChatText}>+ NEW CHAT</Text>
+          <Text style={styles.newChatText}>+ NEW</Text>
         </Pressable>
       </View>
 

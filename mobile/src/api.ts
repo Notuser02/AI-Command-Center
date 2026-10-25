@@ -59,4 +59,13 @@ export const api = {
   getPendingApprovals: () => request<Approval[]>('/approvals/pending'),
   resolveApproval: (id: number, approve: boolean) =>
     request<Approval>(`/approvals/${id}/${approve ? 'approve' : 'deny'}`, { method: 'POST' }),
+
+  // ── Online provider ("bring your own API key") ──
+  getOnlineConfig: () =>
+    request<{ base_url: string; api_key_set: boolean; default_model: string }>('/online/config'),
+  saveOnlineConfig: (body: { base_url?: string; api_key?: string; default_model?: string }) =>
+    request<{ ok?: boolean; base_url: string; api_key_set: boolean; models?: string[] }>(
+      '/online/config', { method: 'POST', body: JSON.stringify(body) }),
+  getOnlineModels: () =>
+    request<{ models: string[]; error: string | null }>('/online/models'),
 };

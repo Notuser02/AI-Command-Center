@@ -749,8 +749,29 @@
             <select id="modalModelSelect" class="message-input" style="width: 100%; flex: 1;">
               <option value="qwen3.5:9b">qwen3.5:9b</option>
             </select>
-            <button id="btnRefreshModels" class="btn-action" title="Re-fetch the model list from Ollama" style="flex-shrink: 0;">↻</button>
+            <button id="btnRefreshModels" class="btn-action" title="Re-fetch the model list" style="flex-shrink: 0;">↻</button>
           </div>
+        </div>
+      </div>
+
+      <!-- Online API-key section (shown when Provider = Online) -->
+      <div id="onlineKeySection" style="display: none; border: 1px dashed var(--border-accent); border-radius: 5px; padding: 12px; gap: 10px; display: none; flex-direction: column;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <span id="onlineKeyStatus" style="font-size: 12px; color: var(--text-dim);">API key: not set</span>
+          <button id="btnToggleApiKey" class="btn-action" style="font-size: 11px;">ADD / MANAGE API KEY</button>
+        </div>
+        <div id="apiKeyPanel" style="display: none; flex-direction: column; gap: 8px;">
+          <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+            <button class="btn-action key-preset" data-url="https://api.studio.nebius.ai/v1" style="font-size: 10px;">Nebius</button>
+            <button class="btn-action key-preset" data-url="https://openrouter.ai/api/v1" style="font-size: 10px;">OpenRouter</button>
+            <button class="btn-action key-preset" data-url="https://api.groq.com/openai/v1" style="font-size: 10px;">Groq</button>
+            <button class="btn-action key-preset" data-url="https://api.openai.com/v1" style="font-size: 10px;">OpenAI</button>
+            <button class="btn-action key-preset" data-url="https://api.deepseek.com/v1" style="font-size: 10px;">DeepSeek</button>
+          </div>
+          <input id="onlineBaseUrl" class="message-input" style="width: 100%; min-height: 36px;" placeholder="Base URL, e.g. https://openrouter.ai/api/v1">
+          <input id="onlineApiKey" class="message-input" type="password" style="width: 100%; min-height: 36px;" placeholder="API key (paste — e.g. sk-...)" autocomplete="off">
+          <div id="onlineKeyError" style="color: var(--neon-red); font-size: 11px; display: none;"></div>
+          <button id="btnSaveApiKey" class="btn-action btn-success" style="align-self: flex-end;">TEST &amp; SAVE</button>
         </div>
       </div>
       <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 8px;">
@@ -884,10 +905,82 @@
     }
 
     modalProviderSelect.addEventListener('change', updateModelDropdown);
+    // (provider change also toggles the API-key section — see Online provider section below)
 
     // Explicit model list refresh in the creation modal
     const btnRefreshModels = document.getElementById('btnRefreshModels');
     btnRefreshModels.addEventListener('click', () => loadModels());
+
+    // ── Online provider: API key management (in the creation modal) ──
+    const onlineKeySection = document.getElementById('onlineKeySection');
+    const onlineKeyStatus = document.getElementById('onlineKeyStatus');
+    const btnToggleApiKey = document.getElementById('btnToggleApiKey');
+    const apiKeyPanel = document.getElementById('apiKeyPanel');
+    const onlineBaseUrl = document.getElementById('onlineBaseUrl');
+    const onlineApiKey = document.getElementById('onlineApiKey');
+    const onlineKeyError = document.getElementById('onlineKeyError');
+    const btnSaveApiKey = document.getElementById('btnSaveApiKey');
+
+    async function refreshOnlineStatus() {
+      try {
+        const res = await fetch(`${HTTP_BASE}/online/config`);
+        const cfg = await res.json();
+        onlineKeyStatus.textContent = cfg.api_key_set
+          ? `✓ API key set${cfg.base_url ? ' for ' + cfg.base_url.replace(/^https?:\/\//, '') : ''}`
+          : 'API key: not set';
+        if (!onlineBaseUrl.value) onlineBaseUrl.value = cfg.base_url || '';
+      } catch (e) {
+        onlineKeyStatus.textContent = 'API key: unknown (server unreachable)';
+      }
+    }
+
+    modalProviderSelect.addEventListener('change', () => {
+      const online = modalProviderSelect.value === 'online';
+      onlineKeySection.style.display = online ? 'flex' : 'none';
+      if (online) refreshOnlineStatus();
+      updateModelDropdown();
+    });
+
+    btnToggleApiKey.addEventListener('click', () => {
+      const open = apiKeyPanel.style.display === 'none';
+      apiKeyPanel.style.display = open ? 'flex' : 'none';
+      onlineKeyError.style.display = 'none';
+      if (open) refreshOnlineStatus();
+    });
+
+    document.querySelectorAll('.key-preset').forEach(btn => {
+      btn.addEventListener('click', () => { onlineBaseUrl.value = btn.dataset.url; });
+    });
+
+    btnSaveApiKey.addEventListener('click', async () => {
+      btnSaveApiKey.disabled = true;
+      onlineKeyError.style.display = 'none';
+      try {
+        const res = await fetch(`${HTTP_BASE}/online/config`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            base_url: onlineBaseUrl.value.trim(),
+            api_key: onlineApiKey.value.trim(),
+            default_model: (availableModels.online && availableModels.online[0]) || ''
+          })
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.detail || 'Save failed');
+        }
+        onlineApiKey.value = '';
+        apiKeyPanel.style.display = 'none';
+        await refreshOnlineStatus();
+        await loadModels();               // online dropdown now has real models
+        updateModelDropdown();
+      } catch (e) {
+        onlineKeyError.textContent = e.message;
+        onlineKeyError.style.display = 'block';
+      } finally {
+        btnSaveApiKey.disabled = false;
+      }
+    });
 
     // Clock
     function updateClock() {

@@ -25,7 +25,7 @@ from services.approval_service import ApprovalService
 from services.connection_manager import ConnectionManager
 
 # ── Route modules ──
-from api import chat, agents, tasks, approvals, websocket
+from api import chat, agents, tasks, approvals, websocket, online
 
 
 # ── Lifespan: runs once on startup, cleans up on shutdown ──
@@ -98,6 +98,7 @@ app.include_router(agents.router)
 app.include_router(tasks.router)
 app.include_router(approvals.router)
 app.include_router(websocket.router)
+app.include_router(online.router)
 
 # ── Web Browser CLI Dashboard ──
 STATIC_DIR = os.path.join(PROJECT_DIR, "static")

@@ -70,6 +70,9 @@ export default function SettingsScreen() {
         <Text style={styles.dim}>Live stream: {wsStatus}</Text>
       </View>
 
+      {/* Online provider — bring your own API key */}
+      <OnlineProviderCard />
+
       {/* Provider + model */}
       <View style={styles.card}>
         <Text style={styles.cardTitle}>DEFAULT PROVIDER</Text>
@@ -99,6 +102,94 @@ export default function SettingsScreen() {
       </View>
 
     </ScrollView>
+  );
+}
+
+const ONLINE_PRESETS = [
+  { label: 'Nebius', url: 'https://api.studio.nebius.ai/v1' },
+  { label: 'OpenRouter', url: 'https://openrouter.ai/api/v1' },
+  { label: 'Groq', url: 'https://api.groq.com/openai/v1' },
+  { label: 'OpenAI', url: 'https://api.openai.com/v1' },
+  { label: 'DeepSeek', url: 'https://api.deepseek.com/v1' },
+];
+
+function OnlineProviderCard() {
+  const [baseUrl, setBaseUrl] = useState('');
+  const [apiKey, setApiKey] = useState('');
+  const [status, setStatus] = useState<string>('checking…');
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    api.getOnlineConfig().then((cfg) => {
+      setBaseUrl(cfg.base_url || '');
+      setStatus(
+        cfg.api_key_set
+          ? `✓ Key set${cfg.base_url ? ' · ' + cfg.base_url.replace(/^https?:\/\//, '') : ''}`
+          : 'Not configured',
+      );
+    }).catch(() => setStatus('Server unreachable'));
+  }, []);
+
+  const save = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await api.saveOnlineConfig({
+        base_url: baseUrl.trim(),
+        api_key: apiKey.trim(),
+      });
+      setApiKey('');
+      const count = res.models?.length ?? 0;
+      setStatus(`✓ Key set${res.base_url ? ' · ' + res.base_url.replace(/^https?:\/\//, '') : ''} — ${count} models available`);
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <View style={styles.card}>
+      <Text style={styles.cardTitle}>ONLINE PROVIDER (API KEY)</Text>
+      <Text style={styles.hint}>
+        Use any online model service — Nebius, OpenRouter, Groq, OpenAI,
+        DeepSeek or any OpenAI-compatible API. The key is stored only on your PC.
+      </Text>
+      <Text style={[styles.dim, { marginTop: 2 }]}>{status}</Text>
+
+      <View style={styles.chipRow}>
+        {ONLINE_PRESETS.map((p) => (
+          <Pressable key={p.label} onPress={() => setBaseUrl(p.url)} style={[styles.chip, baseUrl === p.url && styles.chipActive]}>
+            <Text style={[styles.chipText, baseUrl === p.url && styles.chipTextActive]}>{p.label}</Text>
+          </Pressable>
+        ))}
+      </View>
+
+      <TextInput
+        style={styles.input}
+        value={baseUrl}
+        onChangeText={setBaseUrl}
+        placeholder="Base URL, e.g. https://openrouter.ai/api/v1"
+        placeholderTextColor={colors.dim}
+        autoCapitalize="none"
+        autoCorrect={false}
+      />
+      <TextInput
+        style={[styles.input, { color: '#fff' }]}
+        value={apiKey}
+        onChangeText={setApiKey}
+        placeholder="API key (paste here, e.g. sk-...)"
+        placeholderTextColor={colors.dim}
+        autoCapitalize="none"
+        autoCorrect={false}
+        secureTextEntry
+      />
+      {error ? <Text style={styles.error}>{error}</Text> : null}
+      <Pressable style={[styles.primaryBtn, busy && { opacity: 0.5 }]} disabled={busy} onPress={save}>
+        <Text style={styles.primaryBtnText}>{busy ? 'TESTING…' : 'TEST & SAVE'}</Text>
+      </Pressable>
+    </View>
   );
 }
 
@@ -144,6 +235,7 @@ const styles = StyleSheet.create({
   },
   secondaryBtnText: { color: colors.cyan, fontWeight: '700', fontSize: 12 },
   testResult: { color: colors.text, fontSize: 12 },
+  error: { color: colors.red, fontSize: 12 },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   chip: { borderColor: colors.border, borderWidth: 1, borderRadius: 4, paddingHorizontal: 10, paddingVertical: 6 },
   chipActive: { borderColor: colors.cyan, backgroundColor: 'rgba(0,240,255,0.12)' },

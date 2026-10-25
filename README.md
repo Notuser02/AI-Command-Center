@@ -120,6 +120,20 @@ npx expo start          # scan the QR code
 
 In the app: **Settings → PC Server Address** → `http://<your-PC-IP>:8000` → *Test Connection*. Never `localhost` — on a phone that means the phone itself.
 
+## 🌐 Online Models (bring your own API key)
+
+Any OpenAI-compatible service works — **Nebius, OpenRouter, Groq, OpenAI,
+DeepSeek**, Mistral, Together… Set it up once:
+
+1. In the task creation dialog (PC) switch Provider to **Online** → *Add / Manage
+   API key* — or on the phone, **Settings → Online Provider**
+2. Pick a preset (or paste any base URL) and paste your API key → **Test & Save**
+3. The service's live model list fills the model dropdown automatically
+
+Your key is stored only on your PC (in the local database — never in git, never
+returned by the API). Online tasks stream token-by-token and support STOP exactly
+like local models; the agent's tools, sandbox, and approvals work unchanged.
+
 ---
 
 ## 🌍 Remote Access (Tailscale)
